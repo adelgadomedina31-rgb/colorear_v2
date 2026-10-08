@@ -41,7 +41,8 @@ class Trazo {
 
   double get anchoFranja => radio * Ajustes.anchoArrastre;
 
-  Path get mancha => _mancha ??= _crearMancha(puntos.first, radio, semilla);
+  /// La forma final de la mancha (ya derramada).
+  Path get mancha => _mancha ??= formaMancha(puntos.first, radio, semilla, 1.0);
 
   /// El camino del arrastre, o null si fue solo un toque.
   Path? get franja {
@@ -65,23 +66,36 @@ class Trazo {
     return true;
   }
 
-  static Path _crearMancha(Offset c, double r, int semilla) {
+  /// Forma de una mancha mientras se "derrama".
+  /// [avance] va de 0 (recién tocada) a 1 (tamaño final): la mancha crece
+  /// desde el dedo, con el borde ondulándose como pintura líquida, y al final
+  /// aparecen unas gotitas salpicadas alrededor.
+  static Path formaMancha(Offset c, double r, int semilla, double avance) {
+    final t = avance.clamp(0.0, 1.0).toDouble();
+    // Crece rápido al principio y se frena al final (como un líquido).
+    final crecido = 1 - math.pow(1 - t, 3).toDouble();
+    final escala = 0.15 + 0.85 * crecido;
     if (semilla == 0) {
-      return Path()..addOval(Rect.fromCircle(center: c, radius: r));
+      return Path()..addOval(Rect.fromCircle(center: c, radius: r * escala));
     }
     final azar = math.Random(semilla);
     final f1 = azar.nextDouble() * 2 * math.pi;
     final f2 = azar.nextDouble() * 2 * math.pi;
     final f3 = azar.nextDouble() * 2 * math.pi;
+    // Mientras se derrama, el borde se mueve y ondula más.
+    final ondas = 1.0 + 0.9 * (1 - t);
+    final giro = 1.4 * (1 - t);
+    final rr0 = r * escala;
     const lados = 48;
     final forma = Path();
     for (var i = 0; i < lados; i++) {
       final a = i * 2 * math.pi / lados;
-      final rr = r *
+      final rr = rr0 *
           (0.92 +
-              0.06 * math.sin(3 * a + f1) +
-              0.04 * math.sin(5 * a + f2) +
-              0.03 * math.sin(7 * a + f3));
+              ondas *
+                  (0.06 * math.sin(3 * a + f1 + giro) +
+                      0.04 * math.sin(5 * a + f2 - giro) +
+                      0.03 * math.sin(7 * a + f3 + 2 * giro)));
       final x = c.dx + rr * math.cos(a);
       final y = c.dy + rr * math.sin(a);
       if (i == 0) {
@@ -91,6 +105,20 @@ class Trazo {
       }
     }
     forma.close();
+    // Gotitas salpicadas (aparecen en la segunda mitad del derrame).
+    final gotas = 3 + azar.nextInt(3);
+    final aparicion = ((t - 0.45) / 0.55).clamp(0.0, 1.0).toDouble();
+    for (var g = 0; g < gotas; g++) {
+      final a = azar.nextDouble() * 2 * math.pi;
+      final distancia = r * (1.02 + azar.nextDouble() * 0.2);
+      final tamano = r * (0.06 + azar.nextDouble() * 0.07);
+      if (aparicion <= 0) continue;
+      final centro = Offset(
+        c.dx + distancia * escala * math.cos(a),
+        c.dy + distancia * escala * math.sin(a),
+      );
+      forma.addOval(Rect.fromCircle(center: centro, radius: tamano * aparicion));
+    }
     return forma;
   }
 

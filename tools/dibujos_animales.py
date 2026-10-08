@@ -32,7 +32,7 @@ def gato():
 
 def perro():
     r = [
-        ("fondo", fondo()),pwd
+        ("fondo", fondo()),
         ("cabeza", elipse(500, 500, 260, 285)),
         ("oreja_izq", elipse(245, 500, 95, 200, -0.18)),
         ("oreja_der", elipse(755, 500, 95, 200, 0.18)),

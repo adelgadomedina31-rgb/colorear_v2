@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'config.dart';
 import 'models/pintura.dart';
 import 'pantallas/pantalla_inicio.dart';
+import 'pantallas/pantalla_presentacion.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -53,7 +54,9 @@ class _EstadoApp extends State<ColorearApp> with WidgetsBindingObserver {
         colorSchemeSeed: const Color(0xFFFF7043),
         scaffoldBackgroundColor: Ajustes.fondoApp,
       ),
-      home: const PantallaInicio(),
+      home: Ajustes.mostrarPresentacion
+          ? const PantallaPresentacion()
+          : const PantallaInicio(),
     );
   }
 }

@@ -6,8 +6,10 @@ dibujos dice **COLOREA ARLETH**.
 
 ## Cómo funciona
 
-- **Pintar con toques:** se elige un color abajo y se toca el dibujo. Cada toque deja una mancha de color alrededor del dedo. Las zonas grandes (el cielo, la cabeza del gato) necesitan varios toques; las pequeñas (una ventana, una oreja) se llenan de un solo toque. Si arrastra el dedo, la pintura lo sigue.
+- **Presentación:** al abrir la app caen estrellas de colores, aparecen saltando las letras de **PINTEMOS ARLETH**, suena una musiquita y la voz dice "¡Pintemos, Arleth!". Dura unos 3,5 segundos; tocar la pantalla la salta.
+- **Pintar con toques:** se elige un color abajo y se toca el dibujo. Cada toque suena con un "plop" y deja una mancha de pintura que se derrama desde el dedo, con gotitas salpicadas. Las zonas grandes (el cielo, la cabeza del gato) necesitan varios toques; las pequeñas (una ventana, una oreja) se llenan de un solo toque. Si arrastra el dedo, la pintura lo sigue.
 - El color queda siempre **dentro de la zona** donde empezó el dedo; aunque se salga de las líneas, no se sale la pintura.
+- **Paleta:** 9 colores como gotas de pintura brillantes; la elegida crece, rebota y muestra una estrellita.
 - **Voz de los colores:** al elegir un color, una voz dice su nombre ("¡Rojo!"). Mientras habla, los demás colores se ven más claros y no responden, así la palabra se escucha completa.
 - **Se guarda solo:** lo pintado queda guardado en el celular, aunque se cierre la app o se apague el teléfono.
 - Botones grandes arriba: **inicio**, **anterior**, **siguiente** y **borrar lo pintado** (este pide confirmación).
@@ -30,6 +32,10 @@ Todo está en `lib/config.dart`:
 |---|---|
 | Que se necesiten más (o menos) toques | `toquesZonaChica` y `toquesZonaGrande` |
 | Que más zonas se llenen de un toque | sube `areaUnToque` |
+| Manchas más grandes o más chicas | `escalaMancha` (1.2 = 20% más grandes) |
+| Derrame más lento o más rápido | `duracionDerrame` |
+| Quitar o bajar el "plop" | `sonidoPintar`, `volumenPintar` |
+| Quitar o cambiar la presentación | `mostrarPresentacion`, `presentacionLinea1/2`, `presentacionVoz` |
 | Voz más aguda o más grave | `vozTono` (1.0 normal, hasta 2.0) |
 | Voz más lenta o más rápida | `vozVelocidad` |
 | Apagar la voz | `vozActiva = false` |
@@ -141,6 +147,8 @@ El nombre dentro de `indice.json` debe ser exactamente el del archivo, y cada di
 | Cómo se pinta con el dedo | `lib/widgets/lienzo.dart` |
 | Guardado de lo pintado | `lib/models/pintura.dart` |
 | Voz de los colores | `lib/servicios/voz.dart` |
+| Sonidos | `lib/servicios/sonidos.dart` y `assets/sonidos/` (se crean con `tools/generar_sonidos.py`) |
+| Presentación al abrir | `lib/pantallas/pantalla_presentacion.dart` |
 | Pantalla de pintar (botones, posición de la paleta) | `lib/pantallas/pantalla_pintar.dart` |
 | Zona de papás | `lib/pantallas/pantalla_padres.dart` |
 | Formato y lectura de dibujos | `lib/models/dibujo.dart` |

@@ -31,9 +31,16 @@ class Ajustes {
   /// Área que se considera "zona enorme" (casi todo el dibujo).
   static const double areaZonaGrande = 700000;
 
+  /// Multiplica el tamaño de todas las manchas. 1.2 = un 20% más grandes.
+  static const double escalaMancha = 1.2;
+
   /// Límites para el tamaño (radio) de cada mancha.
-  static const double radioMinimo = 70;
-  static const double radioMaximo = 260;
+  static const double radioMinimo = 80;
+  static const double radioMaximo = 310;
+
+  /// Cuánto tarda la pintura en "derramarse" hasta su tamaño final
+  /// (milisegundos).
+  static const int duracionDerrame = 650;
 
   /// Al arrastrar el dedo se pinta una franja; su ancho es el radio de la
   /// mancha multiplicado por este número.
@@ -44,6 +51,30 @@ class Ajustes {
 
   /// Color de fondo de las pantallas (el "papel" de los dibujos es blanco).
   static const Color fondoApp = Color(0xFFFFF4D6);
+
+  // --------------------------------------------------------------- sonidos
+
+  /// true = suena un "plop" al pintar.
+  static const bool sonidoPintar = true;
+
+  /// Volumen del "plop" (0 a 1).
+  static const double volumenPintar = 0.7;
+
+  /// Al arrastrar el dedo, suena otro "plop" cada esta distancia recorrida.
+  static const double distanciaEntrePlops = 300;
+
+  // ---------------------------------------------------------- presentación
+
+  /// true = al abrir la app se muestra la presentación con estrellas.
+  static const bool mostrarPresentacion = true;
+
+  /// Lo que se ve en grande en la presentación (dos líneas).
+  static const String presentacionLinea1 = 'PINTEMOS';
+  static const String presentacionLinea2 = 'ARLETH';
+
+  /// Lo que dice la voz en la presentación, y con qué tono (más agudo).
+  static const String presentacionVoz = '¡Pintemos, Arleth!';
+  static const double presentacionTono = 1.7;
 
   // ------------------------------------------------------------------- voz
 
@@ -63,8 +94,7 @@ class Ajustes {
   // ---------------------------------------------------------------- colores
 
   /// Colores del menú de pintura con el nombre que dice la voz.
-  /// El último (blanco) sirve de borrador.
-  /// Puedes agregar o quitar colores; conviene dejar una cantidad par.
+  /// Puedes agregar o quitar colores (caben 5 por fila).
   static const List<ColorConNombre> paleta = <ColorConNombre>[
     ColorConNombre(Color(0xFFE53935), 'Rojo'),
     ColorConNombre(Color(0xFFFB8C00), 'Naranja'),
@@ -75,6 +105,5 @@ class Ajustes {
     ColorConNombre(Color(0xFF8E24AA), 'Morado'),
     ColorConNombre(Color(0xFFEC407A), 'Rosado'),
     ColorConNombre(Color(0xFF8D6E63), 'Marrón'),
-    ColorConNombre(Color(0xFFFFFFFF), 'Blanco'),
   ];
 }

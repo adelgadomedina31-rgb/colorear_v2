@@ -77,16 +77,31 @@ class Voz {
     }
   }
 
+  /// Calla la voz si está hablando.
+  static Future<void> parar() async {
+    try {
+      await _tts.stop();
+    } catch (_) {}
+  }
+
   /// Dice [texto] y espera a que termine (máximo 3 segundos).
-  static Future<void> decir(String texto) async {
+  /// [tono] permite una voz más aguda o más grave solo para esta frase.
+  static Future<void> decir(String texto, {double? tono}) async {
     if (!Ajustes.vozActiva) return;
     final lista = await preparar();
     if (!lista) return;
     try {
       await _tts.stop();
+      if (tono != null) await _tts.setPitch(tono);
       await _tts.speak(texto).timeout(const Duration(seconds: 3));
     } catch (_) {
       // Sin voz no pasa nada: la app sigue funcionando.
+    } finally {
+      if (tono != null) {
+        try {
+          await _tts.setPitch(Ajustes.vozTono);
+        } catch (_) {}
+      }
     }
   }
 }
