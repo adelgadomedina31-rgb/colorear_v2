@@ -243,11 +243,12 @@ class _GotasSaltarinas extends StatelessWidget {
             final avance =
                 ((segundos - 1.7 - i * 0.08) / 0.5).clamp(0.0, 1.0).toDouble();
             final escala = math.max(0.01, Curves.elasticOut.transform(avance));
-            final salto = -16 * math.max(0.0, math.sin(segundos * 7 - i * 0.7));
+            final double salto =
+                -16.0 * math.max(0.0, math.sin(segundos * 7 - i * 0.7));
             return Opacity(
               opacity: avance > 0 ? 1.0 : 0.0,
               child: Transform.translate(
-                offset: Offset(0, avance >= 1 ? salto : 0),
+                offset: Offset(0.0, avance >= 1.0 ? salto : 0.0),
                 child: Transform.scale(
                   scale: escala,
                   child: Container(
