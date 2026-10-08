@@ -1,0 +1,5 @@
+# Reglas básicas de análisis. Puedes agregar "include: package:flutter_lints/flutter.yaml"
+# si algún día instalas flutter_lints.
+analyzer:
+  errors:
+    todo: ignore

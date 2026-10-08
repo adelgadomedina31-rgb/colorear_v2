@@ -1,0 +1,61 @@
+name: Compilar APK
+
+# Se ejecuta solo cada vez que subes cambios, y también a mano desde la pestaña Actions.
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      - name: Instalar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Instalar Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # La carpeta "android" la crea Flutter. Solo se genera si todavía no existe.
+      - name: Preparar la carpeta android
+        run: |
+          if [ ! -d android ]; then
+            flutter create --platforms=android --project-name colorear_ninos --org com.arvi --no-pub .
+          fi
+          # Nombre "ARVI" bajo el ícono y permiso para usar la voz del celular
+          python3 tools/preparar_android.py
+
+      # Firma fija: así cada APK nuevo se instala "encima" del anterior,
+      # sin tener que desinstalar la app (se conservan los dibujos agregados).
+      # Si borras la carpeta "signing", el APK igual se compila (con una firma al azar).
+      - name: Usar la firma fija del proyecto
+        run: |
+          if [ -f signing/debug.keystore ]; then
+            mkdir -p ~/.android
+            cp signing/debug.keystore ~/.android/debug.keystore
+            echo "Firma fija instalada"
+          else
+            echo "No hay signing/debug.keystore: se usara una firma al azar"
+          fi
+
+      - name: Bajar las librerías
+        run: flutter pub get
+
+      - name: Compilar el APK
+        run: flutter build apk --release
+
+      - name: Guardar el APK para descargarlo
+        uses: actions/upload-artifact@v4
+        with:
+          name: colorear-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
