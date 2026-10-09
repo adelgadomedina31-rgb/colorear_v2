@@ -3,7 +3,6 @@
 
   - plop1.wav, plop2.wav, plop3.wav: el "plop" de burbuja al pintar
     (tres tonos distintos para que no suene siempre igual).
-  - presentacion.wav: la musiquita alegre de la presentación (~3 segundos).
 
 Todo se sintetiza con matemáticas (no se descarga nada).
 Necesita numpy.  Uso:  python3 tools/generar_sonidos.py
@@ -96,7 +95,6 @@ def main():
     guardar(os.path.join(carpeta, "plop1.wav"), plop(260, 820))
     guardar(os.path.join(carpeta, "plop2.wav"), plop(320, 980))
     guardar(os.path.join(carpeta, "plop3.wav"), plop(220, 700))
-    guardar(os.path.join(carpeta, "presentacion.wav"), presentacion())
     for f in sorted(os.listdir(carpeta)):
         print(f, os.path.getsize(os.path.join(carpeta, f)), "bytes")
 

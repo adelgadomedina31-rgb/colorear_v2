@@ -63,6 +63,7 @@ class Repositorio {
     nuevos.add(texto.trim());
     await prefs.setStringList(_claveImportados, nuevos);
     Pintura.borrar(dibujo);
+    Pintura.olvidarLineas(dibujo.id);
     return dibujo;
   }
 
@@ -75,6 +76,7 @@ class Repositorio {
     }
     await prefs.setStringList(_claveImportados, restantes);
     Pintura.borrarId(id);
+    Pintura.olvidarLineas(id);
   }
 
   static String? _idDe(String texto) {

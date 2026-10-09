@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../config.dart';
 import '../models/dibujo.dart';
 import '../models/pintura.dart';
+import '../servicios/sonidos.dart';
 import '../servicios/voz.dart';
 import '../widgets/botones.dart';
 import '../widgets/lienzo.dart';
@@ -31,11 +32,16 @@ class _EstadoPintar extends State<PantallaPintar> {
   /// true mientras la voz dice el nombre del color (no se puede elegir otro).
   bool _hablando = false;
 
+  /// Sube cada vez que se borra lo pintado (para empezar un lienzo nuevo).
+  int _reinicios = 0;
+
   @override
   void initState() {
     super.initState();
     _indice = widget.indice;
-    Voz.preparar(); // la voz se prepara mientras tanto
+    // La voz y los sonidos se preparan mientras tanto.
+    Voz.preparar();
+    Sonidos.preparar();
   }
 
   Future<void> _elegirColor(ColorConNombre opcion) async {
@@ -45,7 +51,12 @@ class _EstadoPintar extends State<PantallaPintar> {
       _hablando = true;
     });
     final inicio = DateTime.now();
-    await Voz.decir(opcion.nombre);
+    try {
+      // Como mucho 4 segundos: la paleta nunca se queda bloqueada.
+      await Voz.decir(opcion.nombre).timeout(const Duration(seconds: 4));
+    } catch (_) {
+      // Si la voz falla o tarda, igual se sigue.
+    }
     // Pausa mínima, aunque la voz termine antes (o no haya voz).
     final pasado = DateTime.now().difference(inicio);
     const minimo = Duration(milliseconds: Ajustes.pausaMinimaColor);
@@ -86,7 +97,7 @@ class _EstadoPintar extends State<PantallaPintar> {
     if (!mounted) return;
     if (confirmado == true) {
       Pintura.borrar(dibujo);
-      setState(() {});
+      setState(() => _reinicios++);
     }
   }
 
@@ -134,7 +145,7 @@ class _EstadoPintar extends State<PantallaPintar> {
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 child: Lienzo(
-                  key: ValueKey<String>(_dibujo.id),
+                  key: ValueKey<String>('${_dibujo.id}#$_reinicios'),
                   dibujo: _dibujo,
                   color: _color.color,
                 ),

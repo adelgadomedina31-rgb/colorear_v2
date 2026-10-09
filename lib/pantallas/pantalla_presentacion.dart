@@ -3,13 +3,11 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../config.dart';
-import '../servicios/sonidos.dart';
-import '../servicios/voz.dart';
 import 'pantalla_inicio.dart';
 
 /// Presentación corta al abrir la app (unos 3,5 segundos): estrellas de
-/// colores que caen, las letras de "PINTEMOS ARLETH" que aparecen saltando,
-/// una musiquita y la voz que dice "¡Pintemos, Arleth!".
+/// colores que caen y las letras de "PINTEMOS ARLETH" que aparecen saltando.
+/// Es sin sonido.
 /// Tocar la pantalla la salta.
 class PantallaPresentacion extends StatefulWidget {
   const PantallaPresentacion({super.key});
@@ -36,12 +34,6 @@ class _EstadoPresentacion extends State<PantallaPresentacion>
       if (estado == AnimationStatus.completed) _salir();
     });
     _animacion.forward();
-    Voz.preparar();
-    Sonidos.musicaPresentacion();
-    Future<void>.delayed(const Duration(milliseconds: 700), () {
-      if (!mounted || _salio) return;
-      Voz.decir(Ajustes.presentacionVoz, tono: Ajustes.presentacionTono);
-    });
   }
 
   @override
@@ -53,11 +45,6 @@ class _EstadoPresentacion extends State<PantallaPresentacion>
   void _salir() {
     if (_salio || !mounted) return;
     _salio = true;
-    if (_animacion.isAnimating) {
-      // La saltaron con un toque: se corta la música y la voz.
-      Sonidos.pararMusica();
-      Voz.parar();
-    }
     Navigator.of(context).pushReplacement(
       PageRouteBuilder<void>(
         transitionDuration: const Duration(milliseconds: 600),

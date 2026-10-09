@@ -6,12 +6,13 @@ dibujos dice **COLOREA ARLETH**.
 
 ## Cómo funciona
 
-- **Presentación:** al abrir la app caen estrellas de colores, aparecen saltando las letras de **PINTEMOS ARLETH**, suena una musiquita y la voz dice "¡Pintemos, Arleth!". Dura unos 3,5 segundos; tocar la pantalla la salta.
+- **Presentación:** al abrir la app caen estrellas de colores, aparecen saltando las letras de **PINTEMOS ARLETH**. Es sin sonido, dura unos 3,5 segundos y tocar la pantalla la salta.
 - **Pintar con toques:** se elige un color abajo y se toca el dibujo. Cada toque suena con un "plop" y deja una mancha de pintura que se derrama desde el dedo, con gotitas salpicadas. Las zonas grandes (el cielo, la cabeza del gato) necesitan varios toques; las pequeñas (una ventana, una oreja) se llenan de un solo toque. Si arrastra el dedo, la pintura lo sigue.
 - El color queda siempre **dentro de la zona** donde empezó el dedo; aunque se salga de las líneas, no se sale la pintura.
 - **Paleta:** 9 colores como gotas de pintura brillantes; la elegida crece, rebota y muestra una estrellita.
 - **Voz de los colores:** al elegir un color, una voz dice su nombre ("¡Rojo!"). Mientras habla, los demás colores se ven más claros y no responden, así la palabra se escucha completa.
-- **Se guarda solo:** lo pintado queda guardado en el celular, aunque se cierre la app o se apague el teléfono.
+- **Se guarda solo:** lo pintado queda guardado en el celular (una imagen por dibujo), aunque se cierre la app o se apague el teléfono.
+- **Siempre fluida:** cada mancha, al terminar de derramarse, se "hornea" dentro de la imagen del dibujo. Por eso pintar cuesta lo mismo al principio que después de horas de uso.
 - Botones grandes arriba: **inicio**, **anterior**, **siguiente** y **borrar lo pintado** (este pide confirmación).
 - El menú principal muestra los dibujos con lo que ya se pintó, de dos en dos. Se desliza hacia arriba y abajo con el dedo (la barra de la derecha muestra en qué parte de la lista va). Se toca un dibujo y se abre.
 - Viene con **34 dibujos** (animales, frutas, vehículos, cosas del cielo y del jardín...).
@@ -35,7 +36,7 @@ Todo está en `lib/config.dart`:
 | Manchas más grandes o más chicas | `escalaMancha` (1.2 = 20% más grandes) |
 | Derrame más lento o más rápido | `duracionDerrame` |
 | Quitar o bajar el "plop" | `sonidoPintar`, `volumenPintar` |
-| Quitar o cambiar la presentación | `mostrarPresentacion`, `presentacionLinea1/2`, `presentacionVoz` |
+| Quitar o cambiar la presentación | `mostrarPresentacion`, `presentacionLinea1/2` |
 | Voz más aguda o más grave | `vozTono` (1.0 normal, hasta 2.0) |
 | Voz más lenta o más rápida | `vozVelocidad` |
 | Apagar la voz | `vozActiva = false` |

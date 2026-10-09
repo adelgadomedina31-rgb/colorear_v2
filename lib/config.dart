@@ -72,10 +72,6 @@ class Ajustes {
   static const String presentacionLinea1 = 'PINTEMOS';
   static const String presentacionLinea2 = 'ARLETH';
 
-  /// Lo que dice la voz en la presentación, y con qué tono (más agudo).
-  static const String presentacionVoz = '¡Pintemos, Arleth!';
-  static const double presentacionTono = 1.7;
-
   // ------------------------------------------------------------------- voz
 
   /// true = al elegir un color, una voz dice su nombre.

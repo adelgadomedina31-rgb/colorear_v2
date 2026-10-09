@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -8,100 +9,81 @@ import '../models/dibujo.dart';
 import '../models/pintura.dart';
 import '../servicios/sonidos.dart';
 
-/// Dibuja un dibujo junto con lo que se ha pintado. Se usa tanto en el
-/// lienzo grande como en las miniaturas del menú.
-class DibujoPainter extends CustomPainter {
-  DibujoPainter({
-    required this.dibujo,
-    required this.pintura,
-    this.derrames = const <Trazo, double>{},
-  });
+final Paint _suave = Paint()..filterQuality = FilterQuality.medium;
+
+void _dibujarImagen(Canvas canvas, ui.Image imagen, Rect destino) {
+  canvas.drawImageRect(
+    imagen,
+    Rect.fromLTWH(0, 0, imagen.width.toDouble(), imagen.height.toDouble()),
+    destino,
+    _suave,
+  );
+}
+
+/// Miniatura de un dibujo para el menú: papel blanco, lo pintado y las líneas.
+/// Se redibuja sola cuando cambia lo pintado ([Pintura.cambios]).
+class MiniaturaPainter extends CustomPainter {
+  MiniaturaPainter(this.dibujo) : super(repaint: Pintura.cambios);
 
   final Dibujo dibujo;
-  final List<List<Trazo>> pintura;
-
-  /// Manchas que todavía se están "derramando" y cuánto les falta
-  /// (0 = recién tocadas, 1 = terminadas).
-  final Map<Trazo, double> derrames;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final escala = size.width / dibujo.lado;
-    canvas.save();
-    canvas.scale(escala, escala);
-
-    final papel = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.fill;
-    final contorno = Paint()
-      ..color = Colors.black
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = Ajustes.grosorContorno
-      ..strokeJoin = StrokeJoin.round
-      ..strokeCap = StrokeCap.round;
-    final mancha = Paint()..style = PaintingStyle.fill;
-    final franja = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeJoin = StrokeJoin.round
-      ..strokeCap = StrokeCap.round;
-
-    // Cada región: papel blanco, pintura recortada a su forma y contorno.
-    // Las regiones de más abajo quedan tapadas por las de más arriba.
-    for (var i = 0; i < dibujo.regiones.length; i++) {
-      final region = dibujo.regiones[i];
-      canvas.drawPath(region.path, papel);
-      final trazos = i < pintura.length ? pintura[i] : const <Trazo>[];
-      if (trazos.isNotEmpty) {
-        canvas.save();
-        canvas.clipPath(region.path);
-        for (final trazo in trazos) {
-          mancha.color = trazo.color;
-          final avance = derrames[trazo];
-          if (avance != null && avance < 1.0) {
-            canvas.drawPath(
-              Trazo.formaMancha(trazo.centro, trazo.radio, trazo.semilla, avance),
-              mancha,
-            );
-          } else {
-            canvas.drawPath(trazo.mancha, mancha);
-          }
-          final camino = trazo.franja;
-          if (camino != null) {
-            franja
-              ..color = trazo.color
-              ..strokeWidth = trazo.anchoFranja;
-            canvas.drawPath(camino, franja);
-          }
-        }
-        canvas.restore();
-      }
-      canvas.drawPath(region.path, contorno);
-    }
-
-    // Adornos encima de todo (ojos, sonrisas...).
-    final detalleRelleno = Paint()..style = PaintingStyle.fill;
-    final detalleLinea = Paint()
-      ..color = Colors.black
-      ..style = PaintingStyle.stroke
-      ..strokeJoin = StrokeJoin.round
-      ..strokeCap = StrokeCap.round;
-    for (final detalle in dibujo.detalles) {
-      final color = detalle.relleno;
-      if (color != null) {
-        detalleRelleno.color = color;
-        canvas.drawPath(detalle.path, detalleRelleno);
-      }
-      if (detalle.grosor > 0) {
-        detalleLinea.strokeWidth = detalle.grosor;
-        canvas.drawPath(detalle.path, detalleLinea);
-      }
-    }
-
-    canvas.restore();
+    final todo = Offset.zero & size;
+    canvas.drawRect(todo, Paint()..color = Colors.white);
+    final pintado = Pintura.miniatura(dibujo.id);
+    if (pintado != null) _dibujarImagen(canvas, pintado, todo);
+    _dibujarImagen(canvas, Pintura.lineasMiniatura(dibujo), todo);
   }
 
   @override
-  bool shouldRepaint(covariant DibujoPainter oldDelegate) => true;
+  bool shouldRepaint(covariant MiniaturaPainter oldDelegate) =>
+      oldDelegate.dibujo != dibujo;
+}
+
+/// Una mancha que se está pintando ahora (todavía no horneada).
+class _Activo {
+  _Activo(this.trazo, this.nacio);
+
+  final Trazo trazo;
+  final int nacio; // milisegundos
+}
+
+class _PintorLienzo extends CustomPainter {
+  _PintorLienzo({
+    required this.dibujo,
+    required this.activos,
+    required this.avances,
+    required this.lineas,
+  }) : super(repaint: Pintura.cambios);
+
+  final Dibujo dibujo;
+  final List<Trazo> activos;
+  final List<double> avances;
+  final ui.Image? lineas;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final todo = Offset.zero & size;
+    canvas.drawRect(todo, Paint()..color = Colors.white);
+    // Se lee aquí (no antes) porque la imagen se reemplaza de vez en cuando.
+    final base = Pintura.completa(dibujo.id);
+    if (base != null) _dibujarImagen(canvas, base, todo);
+    if (activos.isNotEmpty) {
+      final escala = size.width / dibujo.lado;
+      canvas.save();
+      canvas.scale(escala, escala);
+      for (var k = 0; k < activos.length; k++) {
+        Dibujante.trazo(canvas, dibujo, activos[k], avances[k]);
+      }
+      canvas.restore();
+    }
+    final lineasActuales = lineas;
+    if (lineasActuales != null) _dibujarImagen(canvas, lineasActuales, todo);
+  }
+
+  @override
+  bool shouldRepaint(covariant _PintorLienzo oldDelegate) => true;
 }
 
 /// El lienzo donde se pinta con el dedo.
@@ -114,6 +96,8 @@ class DibujoPainter extends CustomPainter {
 ///  - Si el dedo se arrastra, la pintura lo sigue.
 ///  - La pintura queda "pegada" a la zona donde empezó el dedo y se recorta a
 ///    su forma, así que aunque el dedo se salga de las líneas el color no se sale.
+///  - Cuando una mancha termina, se "hornea" dentro de la imagen del dibujo;
+///    por eso pintar cuesta siempre lo mismo, aunque se pinte muchísimo.
 class Lienzo extends StatefulWidget {
   const Lienzo({super.key, required this.dibujo, required this.color});
 
@@ -124,25 +108,29 @@ class Lienzo extends StatefulWidget {
   State<Lienzo> createState() => _EstadoLienzo();
 }
 
-class _EstadoLienzo extends State<Lienzo> with SingleTickerProviderStateMixin {
+class _EstadoLienzo extends State<Lienzo>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final Ticker _ticker;
+  late final int _version;
   final Stopwatch _reloj = Stopwatch()..start();
   final math.Random _azar = math.Random();
+  final List<_Activo> _activos = <_Activo>[];
 
-  /// Manchas que se están derramando y el momento (ms) en que nacieron.
-  final Map<Trazo, int> _nacimientos = <Trazo, int>{};
+  bool _listo = false; // ya se cargó lo pintado antes
+  ui.Image? _lineas;
+  int _pxLineas = 0;
 
   int? _puntero; // el dedo que está pintando (se ignoran los demás)
-  int? _region; // índice de la región donde se está pintando
   Trazo? _trazo; // la mancha que se está pintando ahora
   double _recorrido = 0; // distancia arrastrada desde el último "plop"
-
-  List<List<Trazo>> get _pintura => Pintura.de(widget.dibujo);
 
   @override
   void initState() {
     super.initState();
     _ticker = createTicker(_alTick);
+    _version = Pintura.version(widget.dibujo.id);
+    WidgetsBinding.instance.addObserver(this);
+    _abrir();
     // Se calcula de una vez el tamaño de cada zona, justo después de mostrar
     // el dibujo, para que el primer toque no tenga que esperar.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -153,20 +141,67 @@ class _EstadoLienzo extends State<Lienzo> with SingleTickerProviderStateMixin {
     });
   }
 
+  Future<void> _abrir() async {
+    await Pintura.abrir(widget.dibujo);
+    if (!mounted) return;
+    setState(() => _listo = true);
+  }
+
+  /// Hornea ya mismo todo lo que se estaba pintando.
+  void _hornearTodo() {
+    final pendientes = _activos.map((a) => a.trazo).toList();
+    _activos.clear();
+    _trazo = null;
+    _puntero = null;
+    Pintura.hornear(widget.dibujo, pendientes, _version);
+  }
+
+  /// Si la app se va a segundo plano, se hornea y se guarda lo que haya.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // "inactive" (bajar la barra de notificaciones, un aviso del sistema)
+    // no interrumpe la pintura; solo cuando la app se oculta de verdad.
+    if (state == AppLifecycleState.resumed ||
+        state == AppLifecycleState.inactive) {
+      return;
+    }
+    if (_activos.isNotEmpty) {
+      _hornearTodo();
+      if (mounted) setState(() {});
+    }
+    Pintura.guardarPendientes();
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _ticker.dispose();
-    // Si quedó algo sin guardar (por ejemplo, al salir del dibujo), se guarda.
-    Pintura.guardarPendientes();
+    // Lo que se estaba pintando se guarda igual.
+    _hornearTodo();
+    Pintura.cerrar(widget.dibujo);
+    _lineas?.dispose();
+    _lineas = null;
     super.dispose();
   }
 
   void _alTick(Duration _) {
     final ahora = _reloj.elapsedMilliseconds;
-    _nacimientos.removeWhere(
-      (trazo, nacio) => ahora - nacio > Ajustes.duracionDerrame,
-    );
-    if (_nacimientos.isEmpty) _ticker.stop();
+    // Las manchas que ya terminaron de derramarse (y no se están arrastrando)
+    // se hornean en la imagen, en orden.
+    var listas = 0;
+    while (listas < _activos.length) {
+      final a = _activos[listas];
+      final termino = ahora - a.nacio >= Ajustes.duracionDerrame &&
+          !identical(a.trazo, _trazo);
+      if (!termino) break;
+      listas++;
+    }
+    if (listas > 0) {
+      final horneadas = _activos.sublist(0, listas).map((a) => a.trazo).toList();
+      _activos.removeRange(0, listas);
+      Pintura.hornear(widget.dibujo, horneadas, _version);
+    }
+    if (_activos.isEmpty) _ticker.stop();
     setState(() {});
   }
 
@@ -194,11 +229,10 @@ class _EstadoLienzo extends State<Lienzo> with SingleTickerProviderStateMixin {
   void _empezar(Offset p, int i) {
     final dibujo = widget.dibujo;
     final area = dibujo.areaVisible(i);
-    final lista = _pintura[i];
     final Trazo trazo;
     if (area < Ajustes.areaUnToque) {
       // Zona pequeña: un círculo que la cubre entera.
-      final caja = dibujo.regiones[i].path.getBounds();
+      final caja = dibujo.limites(i);
       var radio = 0.0;
       for (final esquina in <Offset>[
         caja.topLeft,
@@ -208,22 +242,25 @@ class _EstadoLienzo extends State<Lienzo> with SingleTickerProviderStateMixin {
       ]) {
         radio = math.max(radio, (esquina - p).distance);
       }
-      // Lo de antes queda tapado por completo: no hace falta guardarlo.
-      lista.clear();
-      trazo = Trazo(color: widget.color, radio: radio + 4, semilla: 0, inicio: p);
+      trazo = Trazo(
+        region: i,
+        color: widget.color,
+        radio: radio + 4,
+        semilla: 0,
+        inicio: p,
+      );
     } else {
       trazo = Trazo(
+        region: i,
         color: widget.color,
         radio: _radioPara(area),
         semilla: 1 + _azar.nextInt(1 << 30),
         inicio: p,
       );
     }
-    lista.add(trazo);
-    _region = i;
     _trazo = trazo;
     _recorrido = 0;
-    _nacimientos[trazo] = _reloj.elapsedMilliseconds;
+    _activos.add(_Activo(trazo, _reloj.elapsedMilliseconds));
     if (!_ticker.isActive) _ticker.start();
     Sonidos.plop();
   }
@@ -232,9 +269,8 @@ class _EstadoLienzo extends State<Lienzo> with SingleTickerProviderStateMixin {
       local * (widget.dibujo.lado / lado);
 
   void _alBajar(PointerDownEvent e, double lado) {
-    if (_puntero != null) return;
+    if (_puntero != null || !_listo) return;
     _puntero = e.pointer;
-    _region = null;
     _trazo = null;
     final p = _aDibujo(e.localPosition, lado);
     final i = _regionEn(p);
@@ -246,7 +282,7 @@ class _EstadoLienzo extends State<Lienzo> with SingleTickerProviderStateMixin {
     if (e.pointer != _puntero) return;
     final p = _aDibujo(e.localPosition, lado);
     final trazo = _trazo;
-    if (_region == null || trazo == null) {
+    if (trazo == null) {
       // Empezó fuera del dibujo: se pega a la primera zona que toque.
       final i = _regionEn(p);
       if (i == null) return;
@@ -258,7 +294,7 @@ class _EstadoLienzo extends State<Lienzo> with SingleTickerProviderStateMixin {
       _recorrido += (p - anterior).distance;
       if (_recorrido >= Ajustes.distanciaEntrePlops) {
         _recorrido = 0;
-        Sonidos.plop(suave: true);
+        Sonidos.plop();
       }
       setState(() {});
     }
@@ -266,28 +302,31 @@ class _EstadoLienzo extends State<Lienzo> with SingleTickerProviderStateMixin {
 
   void _alSoltar(PointerEvent e) {
     if (e.pointer != _puntero) return;
-    if (_trazo != null) Pintura.marcarCambio(widget.dibujo);
     _puntero = null;
-    _region = null;
     _trazo = null;
+    // Para que la mancha se hornee aunque ya haya terminado de derramarse.
+    if (_activos.isNotEmpty && !_ticker.isActive) _ticker.start();
   }
 
-  Map<Trazo, double> _avances() {
-    if (_nacimientos.isEmpty) return const <Trazo, double>{};
-    final ahora = _reloj.elapsedMilliseconds;
-    return _nacimientos.map(
-      (trazo, nacio) => MapEntry(
-        trazo,
-        ((ahora - nacio) / Ajustes.duracionDerrame).clamp(0.0, 1.0).toDouble(),
-      ),
-    );
+  void _asegurarLineas(int px) {
+    if (_lineas != null && _pxLineas == px) return;
+    _lineas?.dispose();
+    _lineas = Dibujante.lineas(widget.dibujo, px);
+    _pxLineas = px;
   }
 
   @override
   Widget build(BuildContext context) {
+    final densidad = MediaQuery.devicePixelRatioOf(context);
     return LayoutBuilder(
       builder: (context, restricciones) {
         final lado = math.min(restricciones.maxWidth, restricciones.maxHeight);
+        _asegurarLineas((lado * densidad).round().clamp(200, 2048).toInt());
+        final ahora = _reloj.elapsedMilliseconds;
+        final avances = <double>[
+          for (final a in _activos)
+            ((ahora - a.nacio) / Ajustes.duracionDerrame).clamp(0.0, 1.0).toDouble(),
+        ];
         return Center(
           child: SizedBox(
             width: lado,
@@ -298,12 +337,15 @@ class _EstadoLienzo extends State<Lienzo> with SingleTickerProviderStateMixin {
               onPointerMove: (e) => _alMover(e, lado),
               onPointerUp: _alSoltar,
               onPointerCancel: _alSoltar,
-              child: CustomPaint(
-                size: Size(lado, lado),
-                painter: DibujoPainter(
-                  dibujo: widget.dibujo,
-                  pintura: _pintura,
-                  derrames: _avances(),
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  size: Size(lado, lado),
+                  painter: _PintorLienzo(
+                    dibujo: widget.dibujo,
+                    activos: <Trazo>[for (final a in _activos) a.trazo],
+                    avances: avances,
+                    lineas: _lineas,
+                  ),
                 ),
               ),
             ),

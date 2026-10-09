@@ -219,6 +219,8 @@ class _Tarjeta extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Las líneas de la miniatura se preparan una sola vez (quedan guardadas).
+    Pintura.lineasMiniatura(dibujo);
     return Material(
       color: Colors.white,
       elevation: 3,
@@ -233,10 +235,7 @@ class _Tarjeta extends StatelessWidget {
           ),
           padding: const EdgeInsets.all(10),
           child: CustomPaint(
-            painter: DibujoPainter(
-              dibujo: dibujo,
-              pintura: Pintura.de(dibujo),
-            ),
+            painter: MiniaturaPainter(dibujo),
           ),
         ),
       ),

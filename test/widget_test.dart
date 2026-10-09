@@ -24,19 +24,19 @@ void main() {
     expect(dibujo.areaVisible(1), closeTo(80000, 2000));
   });
 
-  test('un trazo se guarda y se vuelve a leer igual', () {
-    final trazo = Trazo(
-      color: const Color(0xFFE53935),
-      radio: 120,
-      semilla: 42,
-      inicio: const Offset(200, 300),
-    )..sumar(const Offset(260, 330));
-    final copia = Trazo.desdeJson(trazo.aJson());
+  test('un trazo guardado por la versión anterior se puede leer', () {
+    final copia = Trazo.desdeJson(<String, Object>{
+      'c': 0xFFE53935,
+      'r': 120,
+      's': 42,
+      'p': <double>[200, 300, 260, 330],
+    }, 0);
     expect(copia, isNotNull);
-    expect(copia!.color, trazo.color);
+    expect(copia!.color, const Color(0xFFE53935));
     expect(copia.radio, 120);
     expect(copia.semilla, 42);
-    expect(copia.puntos, trazo.puntos);
+    expect(copia.puntos, const <Offset>[Offset(200, 300), Offset(260, 330)]);
+    expect(copia.limites().contains(const Offset(200, 300)), isTrue);
   });
 
   test('un texto roto da un error entendible', () {

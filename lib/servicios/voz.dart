@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_tts/flutter_tts.dart';
 
 import '../config.dart';
@@ -7,19 +9,46 @@ import '../config.dart';
 /// Usa el "texto a voz" del propio celular (funciona sin internet si el
 /// celular tiene descargada la voz en español). Se busca una voz femenina en
 /// español y se le sube el tono para que suene más infantil.
+///
+/// Para que nunca se trabe: cada paso tiene un tiempo máximo de espera, y el
+/// fin de cada frase se detecta con los avisos del motor de voz (si el aviso
+/// no llega, igual se sigue después de un momento).
 class Voz {
   Voz._();
 
   static final FlutterTts _tts = FlutterTts();
   static Future<bool>? _preparada;
+  static Completer<void>? _frase;
+  static final Stopwatch _reloj = Stopwatch()..start();
+  static int _inicioFrase = 0;
 
-  /// Deja la voz lista. Se puede llamar varias veces; solo prepara una vez.
-  static Future<bool> preparar() => _preparada ??= _configurar();
+  /// Deja la voz lista. Se puede llamar varias veces; solo prepara una vez
+  /// (si falla, se reintenta la próxima vez).
+  static Future<bool> preparar() {
+    final existente = _preparada;
+    if (existente != null) return existente;
+    final nueva = _configurar().timeout(
+      const Duration(seconds: 5),
+      onTimeout: () => false,
+    );
+    _preparada = nueva;
+    nueva.then((bien) {
+      if (!bien) _preparada = null;
+    });
+    return nueva;
+  }
 
   static Future<bool> _configurar() async {
     try {
-      // Que speak() espere a que termine de hablar.
-      await _tts.awaitSpeakCompletion(true);
+      // speak() no espera a que termine; el final llega por estos avisos.
+      await _tts.awaitSpeakCompletion(false);
+      _tts.setCompletionHandler(_terminoFrase);
+      _tts.setCancelHandler(_terminoFrase);
+      // Un error termina la frase enseguida (sin esperar).
+      _tts.setErrorHandler((_) {
+        final frase = _frase;
+        if (frase != null && !frase.isCompleted) frase.complete();
+      });
 
       // Primero español latino; si no hay, cualquier español.
       for (final idioma in const <String>['es-US', 'es-PE', 'es-MX', 'es-419', 'es-ES', 'es']) {
@@ -37,6 +66,13 @@ class Voz {
     } catch (_) {
       return false;
     }
+  }
+
+  static void _terminoFrase() {
+    // Un aviso que llega enseguida de empezar es de la frase anterior.
+    if (_reloj.elapsedMilliseconds - _inicioFrase < 150) return;
+    final frase = _frase;
+    if (frase != null && !frase.isCompleted) frase.complete();
   }
 
   /// Si el celular dice cuál de sus voces en español es femenina, se usa esa.
@@ -77,31 +113,24 @@ class Voz {
     }
   }
 
-  /// Calla la voz si está hablando.
-  static Future<void> parar() async {
-    try {
-      await _tts.stop();
-    } catch (_) {}
-  }
-
-  /// Dice [texto] y espera a que termine (máximo 3 segundos).
-  /// [tono] permite una voz más aguda o más grave solo para esta frase.
-  static Future<void> decir(String texto, {double? tono}) async {
+  /// Dice [texto] y espera a que termine (como mucho unos 3 segundos).
+  /// Nunca se queda esperando para siempre.
+  static Future<void> decir(String texto) async {
     if (!Ajustes.vozActiva) return;
     final lista = await preparar();
     if (!lista) return;
+    final anterior = _frase; // por si quedó una frase sin terminar
+    if (anterior != null && !anterior.isCompleted) anterior.complete();
+    final frase = Completer<void>();
+    _frase = frase;
+    _inicioFrase = _reloj.elapsedMilliseconds;
     try {
-      await _tts.stop();
-      if (tono != null) await _tts.setPitch(tono);
-      await _tts.speak(texto).timeout(const Duration(seconds: 3));
+      await _tts.speak(texto).timeout(const Duration(seconds: 2));
+      await frase.future.timeout(const Duration(milliseconds: 2500));
     } catch (_) {
       // Sin voz no pasa nada: la app sigue funcionando.
     } finally {
-      if (tono != null) {
-        try {
-          await _tts.setPitch(Ajustes.vozTono);
-        } catch (_) {}
-      }
+      if (identical(_frase, frase)) _frase = null;
     }
   }
 }

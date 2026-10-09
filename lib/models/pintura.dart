@@ -2,25 +2,34 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'package:path_provider/path_provider.dart';
 
 import '../config.dart';
 import 'dibujo.dart';
 
-/// Una mancha de pintura. Al tocar queda una mancha redonda (con el borde un
-/// poquito ondulado) alrededor del dedo; si el dedo se arrastra, una franja
-/// sigue al dedo.
+/// Una mancha de pintura. Al tocar queda una mancha que se "derrama" desde el
+/// dedo; si el dedo se arrastra, una franja sigue al dedo.
+///
+/// Las manchas solo existen como formas mientras se están pintando. Cuando
+/// terminan, se "hornean" dentro de la imagen del dibujo (ver [Pintura]), así
+/// la app no se pone lenta aunque se pinte muchísimo.
 class Trazo {
   Trazo({
+    required this.region,
     required this.color,
     required this.radio,
     required this.semilla,
     required Offset inicio,
   }) : puntos = <Offset>[inicio];
 
-  Trazo._(this.color, this.radio, this.semilla, this.puntos);
+  Trazo._(this.region, this.color, this.radio, this.semilla, this.puntos);
+
+  /// Índice de la zona del dibujo donde se pinta.
+  final int region;
 
   final Color color;
 
@@ -64,6 +73,19 @@ class Trazo {
     puntos.add(punto);
     _franja?.lineTo(punto.dx, punto.dy);
     return true;
+  }
+
+  /// Rectángulo que contiene toda la pintura de este trazo.
+  Rect limites() {
+    var caja = Rect.fromCircle(
+      center: puntos.first,
+      radius: radio * (semilla == 0 ? 1.02 : 1.45),
+    );
+    final camino = franja;
+    if (camino != null) {
+      caja = caja.expandToInclude(camino.getBounds().inflate(anchoFranja / 2 + 2));
+    }
+    return caja;
   }
 
   /// Forma de una mancha mientras se "derrama".
@@ -122,25 +144,9 @@ class Trazo {
     return forma;
   }
 
-  static double _redondear(double v) => (v * 10).roundToDouble() / 10;
-
-  Map<String, Object> aJson() {
-    final p = <double>[];
-    for (final punto in puntos) {
-      p
-        ..add(_redondear(punto.dx))
-        ..add(_redondear(punto.dy));
-    }
-    return <String, Object>{
-      'c': color.toARGB32(),
-      'r': _redondear(radio),
-      's': semilla,
-      'p': p,
-    };
-  }
-
-  /// Lee un trazo guardado. Devuelve null si los datos no sirven.
-  static Trazo? desdeJson(Object? datos) {
+  /// Lee un trazo guardado por las versiones 3 y 4 de la app (se usa solo
+  /// para pasar lo pintado al formato nuevo). Devuelve null si no sirve.
+  static Trazo? desdeJson(Object? datos, int region) {
     if (datos is! Map) return null;
     final c = datos['c'];
     final r = datos['r'];
@@ -156,114 +162,378 @@ class Trazo {
       if (x is! num || y is! num) return null;
       puntos.add(Offset(x.toDouble(), y.toDouble()));
     }
-    return Trazo._(Color(c), r.toDouble(), s, puntos);
+    return Trazo._(region, Color(c), r.toDouble(), s, puntos);
   }
 }
 
-/// Lo que se ha pintado de cada dibujo. Para cada dibujo hay una lista de
-/// trazos por región.
+/// Funciones de dibujo que comparten el lienzo, las miniaturas y el guardado.
+class Dibujante {
+  Dibujante._();
+
+  static final Paint _capa = Paint();
+  static final Paint _borrar = Paint()..blendMode = BlendMode.dstOut;
+  static final Paint _suave = Paint()..filterQuality = FilterQuality.medium;
+
+  /// Dibuja la mancha [t] (con su [avance]) solo en la parte visible de su
+  /// zona: se recorta a la zona y se borra lo que tapan las zonas de encima.
+  /// El canvas debe estar en unidades del dibujo.
+  static void trazo(Canvas canvas, Dibujo d, Trazo t, double avance) {
+    final i = t.region;
+    if (i < 0 || i >= d.regiones.length) return;
+    final caja = t.limites();
+    canvas.saveLayer(caja, _capa);
+    canvas.save();
+    canvas.clipPath(d.regiones[i].path);
+    final relleno = Paint()
+      ..color = t.color
+      ..style = PaintingStyle.fill;
+    canvas.drawPath(
+      avance >= 1.0
+          ? t.mancha
+          : Trazo.formaMancha(t.centro, t.radio, t.semilla, avance),
+      relleno,
+    );
+    final camino = t.franja;
+    if (camino != null) {
+      canvas.drawPath(
+        camino,
+        Paint()
+          ..color = t.color
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = t.anchoFranja
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round,
+      );
+    }
+    canvas.restore();
+    for (var j = i + 1; j < d.regiones.length; j++) {
+      if (d.limites(j).overlaps(caja)) {
+        canvas.drawPath(d.regiones[j].path, _borrar);
+      }
+    }
+    canvas.restore();
+  }
+
+  /// Imagen con solo las líneas negras del dibujo (las que se ven) y los
+  /// adornos; el resto es transparente. Se pone encima de la pintura.
+  static Image lineas(Dibujo d, int px) {
+    final grabadora = PictureRecorder();
+    final canvas = Canvas(grabadora);
+    final escala = px / d.lado;
+    canvas.scale(escala, escala);
+    canvas.saveLayer(Rect.fromLTWH(0, 0, d.lado, d.lado), Paint());
+    final limpiar = Paint()..blendMode = BlendMode.clear;
+    final contorno = Paint()
+      ..color = const Color(0xFF000000)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = Ajustes.grosorContorno
+      ..strokeJoin = StrokeJoin.round
+      ..strokeCap = StrokeCap.round;
+    for (final region in d.regiones) {
+      // Cada zona tapa las líneas de las zonas que tiene debajo.
+      canvas.drawPath(region.path, limpiar);
+      canvas.drawPath(region.path, contorno);
+    }
+    canvas.restore();
+    final detalleRelleno = Paint()..style = PaintingStyle.fill;
+    final detalleLinea = Paint()
+      ..color = const Color(0xFF000000)
+      ..style = PaintingStyle.stroke
+      ..strokeJoin = StrokeJoin.round
+      ..strokeCap = StrokeCap.round;
+    for (final detalle in d.detalles) {
+      final color = detalle.relleno;
+      if (color != null) {
+        detalleRelleno.color = color;
+        canvas.drawPath(detalle.path, detalleRelleno);
+      }
+      if (detalle.grosor > 0) {
+        detalleLinea.strokeWidth = detalle.grosor;
+        canvas.drawPath(detalle.path, detalleLinea);
+      }
+    }
+    return _aImagen(grabadora, px);
+  }
+
+  /// Nueva imagen de pintura: la [base] (si hay) más estos [trazos].
+  static Image hornear(Image? base, Dibujo d, List<Trazo> trazos, int px) {
+    final grabadora = PictureRecorder();
+    final canvas = Canvas(grabadora);
+    if (base != null) {
+      canvas.drawImageRect(base, _rect(base), _cuadro(px), _suave);
+    }
+    final escala = px / d.lado;
+    canvas.scale(escala, escala);
+    for (final t in trazos) {
+      trazo(canvas, d, t, 1.0);
+    }
+    return _aImagen(grabadora, px);
+  }
+
+  /// Copia "plana" de una imagen, del tamaño pedido. Se hace de verdad
+  /// (no queda enlazada a la imagen original), así la original se puede
+  /// soltar de la memoria.
+  static Future<Image> copiaPlana(Image imagen, int px) async {
+    final grabadora = PictureRecorder();
+    final canvas = Canvas(grabadora);
+    canvas.drawImageRect(imagen, _rect(imagen), _cuadro(px), _suave);
+    final foto = grabadora.endRecording();
+    try {
+      return await foto.toImage(px, px);
+    } finally {
+      foto.dispose();
+    }
+  }
+
+  static Rect _rect(Image i) =>
+      Rect.fromLTWH(0, 0, i.width.toDouble(), i.height.toDouble());
+
+  static Rect _cuadro(int px) =>
+      Rect.fromLTWH(0, 0, px.toDouble(), px.toDouble());
+
+  static Image _aImagen(PictureRecorder grabadora, int px) {
+    final foto = grabadora.endRecording();
+    final imagen = foto.toImageSync(px, px);
+    foto.dispose();
+    return imagen;
+  }
+}
+
+/// Lo que se ha pintado de cada dibujo.
 ///
-/// Se guarda en el celular (un archivo por dibujo), así que lo pintado sigue
-/// ahí aunque se cierre la app. Se guarda solo: un ratito después de levantar
-/// el dedo, al salir de un dibujo y cuando la app se va a segundo plano.
+/// La pintura de cada dibujo es UNA imagen (de [resolucion] x [resolucion]),
+/// no una lista de manchas: así pintar cuesta siempre lo mismo, aunque se
+/// pinte durante horas. Se guarda en el celular como PNG (un archivo por
+/// dibujo), un ratito después de pintar, al salir del dibujo y cuando la app
+/// se va a segundo plano.
+///
+/// En memoria solo está la imagen grande del dibujo abierto; los demás se
+/// guardan como miniaturas para el menú.
 class Pintura {
   Pintura._();
 
-  static final Map<String, List<List<Trazo>>> _datos =
-      <String, List<List<Trazo>>>{};
-  static final Map<String, Dibujo> _dibujos = <String, Dibujo>{};
-  static final Set<String> _pendientes = <String>{};
+  static const int resolucion = 1024;
+  static const int resolucionMiniatura = 320;
+
+  /// Cambia cuando cambia alguna imagen (el menú y el lienzo se redibujan).
+  static final ValueNotifier<int> cambios = ValueNotifier<int>(0);
+
+  static final Map<String, Image> _completas = <String, Image>{};
+  static final Map<String, Image> _miniaturas = <String, Image>{};
+  static final Map<String, Image> _lineasMini = <String, Image>{};
+  static final Map<String, int> _abiertos = <String, int>{};
+  static final Map<String, int> _versiones = <String, int>{};
+  static final Set<String> _sucios = <String>{};
+  static final Set<String> _revisados = <String>{};
   static Timer? _temporizador;
   static Future<Directory?>? _carpeta;
 
-  /// Las escrituras se hacen una detrás de otra para que no se pisen.
+  /// Las lecturas y escrituras se hacen una detrás de otra para no pisarse.
   static Future<void> _cola = Future<void>.value();
 
-  static List<List<Trazo>> de(Dibujo dibujo) {
-    _dibujos[dibujo.id] = dibujo;
-    final actual = _datos[dibujo.id];
-    if (actual != null && actual.length == dibujo.regiones.length) {
-      return actual;
-    }
-    final nuevo = List<List<Trazo>>.generate(
-      dibujo.regiones.length,
-      (_) => <Trazo>[],
-    );
-    _datos[dibujo.id] = nuevo;
-    return nuevo;
+  /// Imagen de pintura del dibujo abierto (null = todavía sin pintar).
+  static Image? completa(String id) => _completas[id];
+
+  static Image? miniatura(String id) => _miniaturas[id];
+
+  /// Cambia cuando se borra lo pintado: así se ignoran manchas viejas.
+  static int version(String id) => _versiones[id] ?? 0;
+
+  /// Líneas del dibujo en tamaño miniatura (se crean una vez).
+  static Image lineasMiniatura(Dibujo d) =>
+      _lineasMini[d.id] ??= Dibujante.lineas(d, resolucionMiniatura);
+
+  /// Olvida las líneas guardadas de un dibujo (cuando se reemplaza).
+  static void olvidarLineas(String id) {
+    _lineasMini.remove(id)?.dispose();
   }
 
-  /// Lee del celular lo pintado de estos dibujos (solo los que todavía no
-  /// están en memoria). Nunca lanza errores: si algo falla, el dibujo queda
-  /// en blanco.
+  /// Lee las miniaturas de lo pintado (solo las que faltan). Si encuentra
+  /// pintura guardada por una versión anterior de la app, la convierte.
+  /// Nunca lanza errores.
   static Future<void> cargar(List<Dibujo> dibujos) async {
+    await _cola;
     final carpeta = await _obtenerCarpeta();
     if (carpeta == null) return;
-    await Future.wait(
-      dibujos
-          .where((d) => !_datos.containsKey(d.id))
-          .map((d) => _cargarUno(carpeta, d)),
-    );
+    final pendientes = dibujos.where((d) => !_revisados.contains(d.id)).toList();
+    for (final d in pendientes) {
+      _revisados.add(d.id);
+    }
+    for (final d in pendientes) {
+      await _cargarMiniatura(carpeta, d);
+    }
+    cambios.value++;
   }
 
-  static Future<void> _cargarUno(Directory carpeta, Dibujo dibujo) async {
+  static Future<void> _cargarMiniatura(Directory carpeta, Dibujo d) async {
     try {
-      final archivo = File(_ruta(carpeta, dibujo.id));
-      if (!await archivo.exists()) return;
-      final datos = jsonDecode(await archivo.readAsString());
-      if (datos is! Map) return;
-      final regiones = datos['regiones'];
-      if (regiones is! Map) return;
-      if (_datos.containsKey(dibujo.id)) return; // ya se empezó a pintar
-      final lista = de(dibujo);
-      for (var i = 0; i < dibujo.regiones.length; i++) {
-        final guardados = regiones[dibujo.regiones[i].id];
-        if (guardados is! List) continue;
-        for (final t in guardados) {
-          final trazo = Trazo.desdeJson(t);
-          if (trazo != null) lista[i].add(trazo);
-        }
-      }
+      final png = File(_ruta(carpeta, d.id, 'png'));
+      if (!await png.exists()) await _migrar(carpeta, d);
+      if (!await png.exists()) return;
+      final imagen =
+          await _decodificar(await png.readAsBytes(), resolucionMiniatura);
+      if (imagen != null) _ponerMiniatura(d.id, imagen);
     } catch (_) {
       // Un archivo dañado no debe impedir que se abra la app.
     }
   }
 
-  /// Avisa que el dibujo cambió. Se guarda un ratito después (si sigue
-  /// pintando, se espera a que pare).
-  static void marcarCambio(Dibujo dibujo) {
-    _dibujos[dibujo.id] = dibujo;
-    _pendientes.add(dibujo.id);
-    _temporizador?.cancel();
-    _temporizador = Timer(const Duration(milliseconds: 800), guardarPendientes);
+  /// Convierte lo pintado con la versión anterior (lista de manchas en un
+  /// .json) a imagen .png. Si no hay nada que convertir, no hace nada.
+  static Future<void> _migrar(Directory carpeta, Dibujo d) async {
+    final viejo = File(_ruta(carpeta, d.id, 'json'));
+    final versionInicial = version(d.id);
+    try {
+      if (!await viejo.exists()) return;
+      final datos = jsonDecode(await viejo.readAsString());
+      final trazos = <Trazo>[];
+      if (datos is Map) {
+        final regiones = datos['regiones'];
+        if (regiones is Map) {
+          for (var i = 0; i < d.regiones.length; i++) {
+            final lista = regiones[d.regiones[i].id];
+            if (lista is! List) continue;
+            for (final t in lista) {
+              final trazo = Trazo.desdeJson(t, i);
+              if (trazo != null) trazos.add(trazo);
+            }
+          }
+        }
+      }
+      if (trazos.isNotEmpty) {
+        final dibujada = Dibujante.hornear(null, d, trazos, resolucion);
+        final plana = await Dibujante.copiaPlana(dibujada, resolucion);
+        dibujada.dispose();
+        try {
+          await _escribirPng(carpeta, d.id, plana, versionInicial);
+        } finally {
+          plana.dispose();
+        }
+      }
+      await viejo.delete();
+    } catch (_) {
+      // Si no se pudo convertir, el .json queda para intentarlo otra vez.
+    }
   }
 
-  /// Guarda ya mismo todo lo que cambió.
+  /// Prepara la imagen grande para pintar. Hay que llamar a [cerrar] después.
+  static Future<void> abrir(Dibujo d) async {
+    _abiertos[d.id] = (_abiertos[d.id] ?? 0) + 1;
+    if (_completas.containsKey(d.id)) return;
+    final versionInicial = version(d.id);
+    await _cola; // por si se está guardando o borrando
+    final carpeta = await _obtenerCarpeta();
+    if (carpeta == null) return;
+    final png = File(_ruta(carpeta, d.id, 'png'));
+    try {
+      if (!await png.exists()) await _migrar(carpeta, d);
+      if (!await png.exists()) return;
+      final imagen = await _decodificar(await png.readAsBytes(), resolucion);
+      if (imagen == null) throw const FormatException('imagen vacía');
+      if (_completas.containsKey(d.id) ||
+          version(d.id) != versionInicial ||
+          (_abiertos[d.id] ?? 0) == 0) {
+        imagen.dispose();
+        return;
+      }
+      _completas[d.id] = imagen;
+    } catch (_) {
+      // El archivo está dañado: se aparta (no se borra) y se empieza en blanco.
+      try {
+        await png.rename('${png.path}.danado');
+      } catch (_) {}
+    }
+  }
+
+  /// Agrega estas manchas terminadas a la imagen del dibujo.
+  /// [versionLienzo] es la [version] que había al abrir el dibujo.
+  static void hornear(Dibujo d, List<Trazo> trazos, int versionLienzo) {
+    if (trazos.isEmpty || versionLienzo != version(d.id)) return;
+    final base = _completas[d.id];
+    final nueva = Dibujante.hornear(base, d, trazos, resolucion);
+    _completas[d.id] = nueva;
+    base?.dispose();
+    _aplanar(d.id, nueva);
+    _sucios.add(d.id);
+    _temporizador?.cancel();
+    _temporizador = Timer(const Duration(seconds: 2), () {
+      guardarPendientes();
+    });
+  }
+
+  /// En algunos celulares, una imagen recién horneada sigue "enlazada" a la
+  /// anterior (y esa a la anterior...), lo que llenaría la memoria. Aquí se
+  /// reemplaza por una copia plana, sin enlaces.
+  static Future<void> _aplanar(String id, Image imagen) async {
+    final copia = imagen.clone();
+    try {
+      final plana = await Dibujante.copiaPlana(copia, resolucion);
+      if (identical(_completas[id], imagen)) {
+        _completas[id] = plana;
+        imagen.dispose();
+        cambios.value++;
+      } else {
+        plana.dispose();
+      }
+    } catch (_) {
+      // Si no se pudo, se queda la imagen como estaba.
+    } finally {
+      copia.dispose();
+    }
+  }
+
+  /// Se terminó de usar el dibujo: actualiza su miniatura, lo guarda y
+  /// libera la imagen grande.
+  static Future<void> cerrar(Dibujo d) async {
+    final quedan = (_abiertos[d.id] ?? 1) - 1;
+    if (quedan <= 0) {
+      _abiertos.remove(d.id);
+    } else {
+      _abiertos[d.id] = quedan;
+    }
+    await guardarPendientes();
+    if ((_abiertos[d.id] ?? 0) == 0) {
+      _completas.remove(d.id)?.dispose();
+    }
+  }
+
+  /// Guarda ya mismo lo que cambió (y actualiza sus miniaturas).
   static Future<void> guardarPendientes() {
     _temporizador?.cancel();
     _temporizador = null;
-    if (_pendientes.isEmpty) return _cola;
-    final ids = _pendientes.toList();
-    _pendientes.clear();
-    final contenidos = <String, String>{};
+    if (_sucios.isEmpty) return _cola;
+    final ids = _sucios.toList();
+    _sucios.clear();
+    final copias = <String, Image>{};
+    final versiones = <String, int>{};
     for (final id in ids) {
-      final dibujo = _dibujos[id];
-      final lista = _datos[id];
-      if (dibujo == null || lista == null) continue;
-      final regiones = <String, Object>{};
-      for (var i = 0; i < dibujo.regiones.length && i < lista.length; i++) {
-        if (lista[i].isEmpty) continue;
-        regiones[dibujo.regiones[i].id] =
-            lista[i].map((t) => t.aJson()).toList();
-      }
-      contenidos[id] = jsonEncode(<String, Object>{'v': 1, 'regiones': regiones});
+      final imagen = _completas[id];
+      if (imagen == null) continue;
+      copias[id] = imagen.clone();
+      versiones[id] = version(id);
     }
     return _enCola((carpeta) async {
-      for (final entrada in contenidos.entries) {
-        final ruta = _ruta(carpeta, entrada.key);
-        final temporal = File('$ruta.tmp');
-        await temporal.writeAsString(entrada.value, flush: true);
-        await temporal.rename(ruta);
+      for (final entrada in copias.entries) {
+        final id = entrada.key;
+        final imagen = entrada.value;
+        try {
+          final esperada = versiones[id] ?? -1;
+          if (esperada != version(id)) continue; // se borró mientras tanto
+          // Primero se guarda el archivo (lo más importante)...
+          if (carpeta != null) await _escribirPng(carpeta, id, imagen, esperada);
+          // ...y después se actualiza la miniatura del menú.
+          final mini = await Dibujante.copiaPlana(imagen, resolucionMiniatura);
+          if (esperada == version(id)) {
+            _ponerMiniatura(id, mini);
+            cambios.value++;
+          } else {
+            mini.dispose();
+          }
+        } catch (_) {
+          // Si no se pudo guardar, se sigue pintando igual.
+        } finally {
+          imagen.dispose();
+        }
       }
     });
   }
@@ -272,28 +542,79 @@ class Pintura {
 
   /// Deja el dibujo en blanco y borra lo guardado en el celular.
   static void borrarId(String id) {
-    _datos.remove(id);
-    _pendientes.remove(id);
+    _versiones[id] = version(id) + 1;
+    _completas.remove(id)?.dispose();
+    _miniaturas.remove(id)?.dispose();
+    _sucios.remove(id);
+    cambios.value++;
     _enCola((carpeta) async {
-      final archivo = File(_ruta(carpeta, id));
-      if (await archivo.exists()) await archivo.delete();
+      if (carpeta == null) return;
+      for (final extension in const <String>['png', 'json']) {
+        final archivo = File(_ruta(carpeta, id, extension));
+        if (await archivo.exists()) await archivo.delete();
+      }
     });
   }
 
-  static Future<void> _enCola(Future<void> Function(Directory) tarea) {
+  static void _ponerMiniatura(String id, Image imagen) {
+    final vieja = _miniaturas[id];
+    _miniaturas[id] = imagen;
+    vieja?.dispose();
+  }
+
+  static Future<Image?> _decodificar(Uint8List bytes, int lado) async {
+    final codec = await instantiateImageCodec(
+      bytes,
+      targetWidth: lado,
+      targetHeight: lado,
+    );
+    try {
+      final cuadro = await codec.getNextFrame();
+      return cuadro.image;
+    } finally {
+      codec.dispose();
+    }
+  }
+
+  /// Escribe la imagen como PNG. Si mientras tanto se borró lo pintado
+  /// (cambió la versión), no la escribe.
+  static Future<void> _escribirPng(
+    Directory carpeta,
+    String id,
+    Image imagen,
+    int versionEsperada,
+  ) async {
+    final datos = await imagen
+        .toByteData(format: ImageByteFormat.png)
+        .timeout(const Duration(seconds: 15));
+    if (datos == null) return;
+    final ruta = _ruta(carpeta, id, 'png');
+    final temporal = File('$ruta.tmp');
+    await temporal.writeAsBytes(
+      datos.buffer.asUint8List(datos.offsetInBytes, datos.lengthInBytes),
+      flush: true,
+    );
+    if (version(id) != versionEsperada) {
+      await temporal.delete();
+      return;
+    }
+    await temporal.rename(ruta);
+  }
+
+  static Future<void> _enCola(Future<void> Function(Directory?) tarea) {
     _cola = _cola.then((_) async {
       try {
-        final carpeta = await _obtenerCarpeta();
-        if (carpeta != null) await tarea(carpeta);
+        // Nunca más de 30 segundos: la cola no se puede quedar trabada.
+        await tarea(await _obtenerCarpeta()).timeout(const Duration(seconds: 30));
       } catch (_) {
-        // Si no se pudo guardar, se sigue pintando igual.
+        // Si algo falla al guardar o borrar, la app sigue funcionando.
       }
     });
     return _cola;
   }
 
-  static Future<Directory?> _obtenerCarpeta() {
-    return _carpeta ??= () async {
+  static Future<Directory?> _obtenerCarpeta() async {
+    final carpeta = await (_carpeta ??= () async {
       try {
         final base = await getApplicationSupportDirectory();
         final carpeta = Directory('${base.path}${Platform.pathSeparator}pintura');
@@ -302,11 +623,13 @@ class Pintura {
       } catch (_) {
         return null;
       }
-    }();
+    }());
+    if (carpeta == null) _carpeta = null; // se reintenta la próxima vez
+    return carpeta;
   }
 
-  static String _ruta(Directory carpeta, String id) {
+  static String _ruta(Directory carpeta, String id, String extension) {
     final limpio = id.replaceAll(RegExp(r'[^A-Za-z0-9_\-]'), '_');
-    return '${carpeta.path}${Platform.pathSeparator}$limpio.json';
+    return '${carpeta.path}${Platform.pathSeparator}$limpio.$extension';
   }
 }

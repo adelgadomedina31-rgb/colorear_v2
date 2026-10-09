@@ -54,6 +54,12 @@ class Dibujo {
   /// true si lo agregó una persona desde la "Zona de papás".
   final bool importado;
 
+  /// Rectángulo que ocupa cada región (calculado una vez).
+  late final List<Rect> _limites =
+      regiones.map((r) => r.path.getBounds()).toList(growable: false);
+
+  Rect limites(int i) => _limites[i];
+
   /// Áreas visibles ya calculadas (una por región).
   late final List<double?> _areas =
       List<double?>.filled(regiones.length, null);
