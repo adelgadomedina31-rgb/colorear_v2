@@ -47,6 +47,17 @@ jobs:
             echo "No hay signing/debug.keystore: se usara una firma al azar"
           fi
 
+      # Tus imágenes de la carpeta mis_dibujos se convierten en dibujos para pintar.
+      - name: Instalar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Convertir mis dibujos (carpeta mis_dibujos)
+        run: |
+          pip install --quiet opencv-python-headless numpy
+          python3 tools/convertir_imagenes.py
+
       - name: Bajar las librerías
         run: flutter pub get
 

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../config.dart';
 import '../models/dibujo.dart';
 import '../models/pintura.dart';
+import '../models/tarritos.dart';
 import '../servicios/sonidos.dart';
 import '../servicios/voz.dart';
 import '../widgets/botones.dart';
@@ -44,16 +45,24 @@ class _EstadoPintar extends State<PantallaPintar> {
     Sonidos.preparar();
   }
 
+  /// Para no repetir "¡Elige otro color!" a cada toque.
+  DateTime _ultimoAviso = DateTime.fromMillisecondsSinceEpoch(0);
+
   Future<void> _elegirColor(ColorConNombre opcion) async {
     if (_hablando) return;
-    setState(() {
-      _color = opcion;
-      _hablando = true;
-    });
+    setState(() => _color = opcion);
+    await _hablar(opcion.nombre);
+  }
+
+  /// Dice una frase. Mientras habla, la paleta queda bloqueada para que la
+  /// frase se escuche completa.
+  Future<void> _hablar(String texto) async {
+    if (_hablando) return;
+    setState(() => _hablando = true);
     final inicio = DateTime.now();
     try {
-      // Como mucho 4 segundos: la paleta nunca se queda bloqueada.
-      await Voz.decir(opcion.nombre).timeout(const Duration(seconds: 4));
+      // Como mucho 5 segundos: la paleta nunca se queda bloqueada.
+      await Voz.decir(texto).timeout(const Duration(seconds: 5));
     } catch (_) {
       // Si la voz falla o tarda, igual se sigue.
     }
@@ -66,6 +75,43 @@ class _EstadoPintar extends State<PantallaPintar> {
     if (!mounted) return;
     setState(() => _hablando = false);
   }
+
+  /// Avisos de los tarritos: se dicen SIN bloquear la paleta (así puede
+  /// elegir otro color mientras escucha). Si [siempre] es false, no se
+  /// repiten más de una vez cada 3 segundos.
+  void _avisar(String texto, {bool siempre = false}) {
+    final ahora = DateTime.now();
+    if (!siempre) {
+      if (_hablando || ahora.difference(_ultimoAviso) < const Duration(seconds: 3)) {
+        return;
+      }
+    }
+    _ultimoAviso = ahora;
+    Voz.decir(texto);
+  }
+
+  String _conColor(String frase, ColorConNombre opcion) =>
+      frase.replaceAll('{color}', opcion.nombre.toLowerCase());
+
+  /// El lienzo pide pintura antes de cada mancha. Devuelve false si el
+  /// tarrito del color elegido está vacío (entonces no se pinta).
+  bool _gastarPintura() {
+    final i = Ajustes.paleta.indexOf(_color);
+    if (i < 0) return true;
+    final tarritos = Tarritos.instancia;
+    if (!tarritos.disponible(i)) {
+      _pedirOtroColor();
+      return false;
+    }
+    final seVacio = tarritos.usar(i);
+    if (seVacio) _avisar(_conColor(Ajustes.vozSeAcabo, _color), siempre: true);
+    return true;
+  }
+
+  void _pedirOtroColor() => _avisar(Ajustes.vozEligeOtro);
+
+  void _tocoRellenando(ColorConNombre opcion) =>
+      _avisar(_conColor(Ajustes.vozRellenando, opcion));
 
   Dibujo get _dibujo => widget.dibujos[_indice];
 
@@ -148,16 +194,32 @@ class _EstadoPintar extends State<PantallaPintar> {
                   key: ValueKey<String>('${_dibujo.id}#$_reinicios'),
                   dibujo: _dibujo,
                   color: _color.color,
+                  alGastarPintura: _gastarPintura,
                 ),
               ),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 16),
-              child: Paleta(
-                colores: Ajustes.paleta,
-                seleccionado: _color,
-                bloqueada: _hablando,
-                alElegir: _elegirColor,
+              child: ListenableBuilder(
+                listenable: Tarritos.instancia,
+                builder: (context, _) {
+                  final tarritos = Tarritos.instancia;
+                  return Paleta(
+                    colores: Ajustes.paleta,
+                    seleccionado: _color,
+                    bloqueada: _hablando,
+                    alElegir: _elegirColor,
+                    alTocarRellenando: _tocoRellenando,
+                    niveles: <double>[
+                      for (var i = 0; i < Ajustes.paleta.length; i++)
+                        tarritos.nivel(i),
+                    ],
+                    rellenando: <int>{
+                      for (var i = 0; i < Ajustes.paleta.length; i++)
+                        if (tarritos.rellenando(i)) i,
+                    },
+                  );
+                },
               ),
             ),
           ],

@@ -1,0 +1,27 @@
+MIS DIBUJOS
+===========
+
+Pon en esta carpeta las imágenes que quieras que Arleth pinte.
+Cada imagen aparece al PRINCIPIO del menú de la app.
+
+Qué imágenes sirven:
+  - Láminas para colorear: líneas NEGRAS sobre fondo BLANCO.
+  - Formato PNG o JPG (también .jpeg, .webp, .bmp).
+  - Las figuras deben estar cerradas (sin huecos en las líneas): cada zona
+    blanca encerrada por líneas se vuelve una zona para pintar.
+  - Mejor si son simples y con líneas gruesas (como los dibujos para niños
+    pequeños). Las zonas muy chiquitas no se pintan.
+  - Sin sombras ni grises: una foto de una hoja puede servir si está bien
+    iluminada y derecha, pero un escaneo o una imagen digital funciona mejor.
+
+El nombre del archivo es el nombre del dibujo:
+  "gato feliz.png"  ->  se llama "Gato feliz" en la app.
+
+Cómo se agregan:
+  1. Copia las imágenes aquí.
+  2. git add .
+     git commit -m "Nuevos dibujos"
+     git push
+  3. GitHub compila el APK nuevo y convierte las imágenes solo.
+
+Para quitar un dibujo, borra su imagen de esta carpeta y vuelve a subir.

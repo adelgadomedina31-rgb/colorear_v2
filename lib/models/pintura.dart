@@ -206,7 +206,7 @@ class Dibujante {
       );
     }
     canvas.restore();
-    for (var j = i + 1; j < d.regiones.length; j++) {
+    for (var j = i + 1; d.capas && j < d.regiones.length; j++) {
       if (d.limites(j).overlaps(caja)) {
         canvas.drawPath(d.regiones[j].path, _borrar);
       }
@@ -340,8 +340,32 @@ class Pintura {
   static int version(String id) => _versiones[id] ?? 0;
 
   /// Líneas del dibujo en tamaño miniatura (se crean una vez).
-  static Image lineasMiniatura(Dibujo d) =>
-      _lineasMini[d.id] ??= Dibujante.lineas(d, resolucionMiniatura);
+  /// Para los dibujos hechos desde una imagen se preparan en [cargar]; hasta
+  /// entonces devuelve null.
+  static Image? lineasMiniatura(Dibujo d) {
+    final hecha = _lineasMini[d.id];
+    if (hecha != null) return hecha;
+    if (d.lineasPng != null) return null;
+    final nueva = Dibujante.lineas(d, resolucionMiniatura);
+    _lineasMini[d.id] = nueva;
+    return nueva;
+  }
+
+  /// Lee la imagen de líneas de un dibujo hecho desde una imagen, del tamaño
+  /// pedido. Devuelve null si no tiene o no se pudo leer.
+  static Future<Image?> lineasDeImagen(Dibujo d, int px) async {
+    final png = d.lineasPng;
+    if (png == null) return null;
+    try {
+      final imagen = await _decodificar(png, px);
+      if (imagen == null) d.lineasPng = null;
+      return imagen;
+    } catch (_) {
+      // Imagen dañada: las líneas se dibujan a partir de las zonas.
+      d.lineasPng = null;
+      return null;
+    }
+  }
 
   /// Olvida las líneas guardadas de un dibujo (cuando se reemplaza).
   static void olvidarLineas(String id) {
@@ -352,6 +376,14 @@ class Pintura {
   /// pintura guardada por una versión anterior de la app, la convierte.
   /// Nunca lanza errores.
   static Future<void> cargar(List<Dibujo> dibujos) async {
+    // Líneas de las miniaturas de los dibujos hechos desde una imagen.
+    for (final d in dibujos) {
+      if (d.lineasPng == null || _lineasMini.containsKey(d.id)) continue;
+      final lineas = await lineasDeImagen(d, resolucionMiniatura);
+      if (lineas == null) continue;
+      _lineasMini.remove(d.id)?.dispose();
+      _lineasMini[d.id] = lineas;
+    }
     await _cola;
     final carpeta = await _obtenerCarpeta();
     if (carpeta == null) return;
@@ -539,6 +571,13 @@ class Pintura {
   }
 
   static void borrar(Dibujo dibujo) => borrarId(dibujo.id);
+
+  /// Deja TODOS estos dibujos en blanco.
+  static void borrarTodos(List<Dibujo> dibujos) {
+    for (final d in dibujos) {
+      borrarId(d.id);
+    }
+  }
 
   /// Deja el dibujo en blanco y borra lo guardado en el celular.
   static void borrarId(String id) {

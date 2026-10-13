@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../config.dart';
 import '../data/repositorio.dart';
 import '../models/dibujo.dart';
 import '../models/pintura.dart';
+import '../widgets/botones.dart';
 import '../widgets/lienzo.dart';
 import 'pantalla_padres.dart';
 import 'pantalla_pintar.dart';
@@ -72,6 +74,39 @@ class _EstadoInicio extends State<PantallaInicio> {
     );
     // Al volver, se refrescan las miniaturas para mostrar lo pintado.
     if (mounted) setState(() {});
+  }
+
+  /// Deja en blanco todos los dibujos (pregunta antes).
+  Future<void> _borrarTodo() async {
+    final confirmado = await showDialog<bool>(
+      context: context,
+      builder: (contexto) => AlertDialog(
+        title: const Text('¿Borrar lo pintado de TODOS los dibujos?'),
+        content: const Text('Todos los dibujos quedarán en blanco otra vez.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(contexto).pop(false),
+            child: const Text('No'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(contexto).pop(true),
+            child: const Text('Sí, borrar todo'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || confirmado != true) return;
+    Pintura.borrarTodos(_dibujos);
+    setState(() {});
+  }
+
+  /// Cierra la app y vuelve a la pantalla principal del celular.
+  Future<void> _salir() async {
+    try {
+      // Por si quedó algo sin guardar (como mucho 2 segundos).
+      await Pintura.guardarPendientes().timeout(const Duration(seconds: 2));
+    } catch (_) {}
+    await SystemNavigator.pop();
   }
 
   Future<void> _abrirZonaPadres() async {
@@ -143,6 +178,28 @@ class _EstadoInicio extends State<PantallaInicio> {
                         color: Colors.black26,
                       ),
                     ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 2, 20, 10),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Borrar lo pintado de todos los dibujos.
+                  BotonGrande(
+                    icono: Icons.cleaning_services_rounded,
+                    color: const Color(0xFFFB8C00),
+                    tamano: 54,
+                    alTocar: _borrarTodo,
+                  ),
+                  // Apagar: cierra la app (sin preguntar).
+                  BotonGrande(
+                    icono: Icons.power_settings_new_rounded,
+                    color: const Color(0xFFE53935),
+                    tamano: 54,
+                    alTocar: _salir,
                   ),
                 ],
               ),

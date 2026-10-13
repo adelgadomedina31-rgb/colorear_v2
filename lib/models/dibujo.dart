@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:path_drawing/path_drawing.dart';
@@ -35,6 +36,11 @@ class Detalle {
 ///   "detalles": [ {"path": "...", "relleno": "#000000", "grosor": 10} ]  // opcional
 /// }
 /// Los "path" son trazos SVG (M, L, C, Q, A, Z...).
+///
+/// Los dibujos hechos desde una imagen (carpeta mis_dibujos) traen además:
+///   "lineas": "foto_x.png"   // imagen con las líneas, que se ve encima
+///   "relleno": "evenodd"     // las zonas pueden tener huecos
+///   "capas": false           // las zonas no se tapan unas a otras
 class Dibujo {
   Dibujo({
     required this.id,
@@ -43,6 +49,8 @@ class Dibujo {
     required this.regiones,
     required this.detalles,
     this.importado = false,
+    this.capas = true,
+    this.archivoLineas,
   });
 
   final String id;
@@ -53,6 +61,17 @@ class Dibujo {
 
   /// true si lo agregó una persona desde la "Zona de papás".
   final bool importado;
+
+  /// false = las zonas no se enciman (dibujos hechos desde una imagen):
+  /// no hace falta calcular qué zona tapa a cuál.
+  final bool capas;
+
+  /// Nombre del archivo con la imagen de las líneas (o null si las líneas
+  /// se dibujan a partir de las zonas).
+  final String? archivoLineas;
+
+  /// Los bytes de esa imagen (los pone el repositorio al cargar).
+  Uint8List? lineasPng;
 
   /// Rectángulo que ocupa cada región (calculado una vez).
   late final List<Rect> _limites =
@@ -84,7 +103,8 @@ class Dibujo {
           );
           if (!forma.contains(punto)) continue;
           var tapado = false;
-          for (var j = i + 1; j < regiones.length; j++) {
+          for (var j = i + 1; capas && j < regiones.length; j++) {
+            if (!_limites[j].contains(punto)) continue;
             if (regiones[j].path.contains(punto)) {
               tapado = true;
               break;
@@ -142,6 +162,7 @@ class Dibujo {
     if (listaRegiones is! List || listaRegiones.isEmpty) {
       throw const FormatException('Falta la lista "regiones" del dibujo.');
     }
+    final parImpar = json['relleno'] == 'evenodd';
     final regiones = <Region>[];
     final idsUsados = <String>{};
     for (var i = 0; i < listaRegiones.length; i++) {
@@ -155,10 +176,10 @@ class Dibujo {
         idRegion = '${idRegion}_$i';
         idsUsados.add(idRegion);
       }
-      regiones.add(Region(
-        id: idRegion,
-        path: _leerPath(r['path'] as String, 'la región ${i + 1}'),
-      ));
+      final forma = _leerPath(r['path'] as String, 'la región ${i + 1}');
+      // "evenodd": los huecos de una zona (otras zonas adentro) no se pintan.
+      if (parImpar) forma.fillType = PathFillType.evenOdd;
+      regiones.add(Region(id: idRegion, path: forma));
     }
 
     final detalles = <Detalle>[];
@@ -185,6 +206,8 @@ class Dibujo {
       regiones: regiones,
       detalles: detalles,
       importado: importado,
+      capas: json['capas'] != false,
+      archivoLineas: json['lineas'] is String ? json['lineas'] as String : null,
     );
   }
 

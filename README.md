@@ -9,13 +9,16 @@ dibujos dice **COLOREA ARLETH**.
 - **Presentación:** al abrir la app caen estrellas de colores, aparecen saltando las letras de **PINTEMOS ARLETH**. Es sin sonido, dura unos 3,5 segundos y tocar la pantalla la salta.
 - **Pintar con toques:** se elige un color abajo y se toca el dibujo. Cada toque suena con un "plop" y deja una mancha de pintura que se derrama desde el dedo, con gotitas salpicadas. Las zonas grandes (el cielo, la cabeza del gato) necesitan varios toques; las pequeñas (una ventana, una oreja) se llenan de un solo toque. Si arrastra el dedo, la pintura lo sigue.
 - El color queda siempre **dentro de la zona** donde empezó el dedo; aunque se salga de las líneas, no se sale la pintura.
-- **Paleta:** 9 colores como gotas de pintura brillantes; la elegida crece, rebota y muestra una estrellita.
+- **Paleta de tarritos:** 9 colores, cada uno es un tarrito redondo que muestra cuánta pintura le queda. El elegido crece, rebota y muestra una estrellita.
+- **Los tarritos se vacían:** cada toque (y cada tramo de arrastre) gasta pintura. Cuando un color se acaba, la voz dice "¡Se acabó el color rojo! Elige otro color." Ese tarrito queda **rellenándose** (más claro, con un relojito de arena) y no se puede usar; se rellena mientras se pinta con **otros** colores. Así aprende a usar varios colores.
 - **Voz de los colores:** al elegir un color, una voz dice su nombre ("¡Rojo!"). Mientras habla, los demás colores se ven más claros y no responden, así la palabra se escucha completa.
 - **Se guarda solo:** lo pintado queda guardado en el celular (una imagen por dibujo), aunque se cierre la app o se apague el teléfono.
 - **Siempre fluida:** cada mancha, al terminar de derramarse, se "hornea" dentro de la imagen del dibujo. Por eso pintar cuesta lo mismo al principio que después de horas de uso.
 - Botones grandes arriba: **inicio**, **anterior**, **siguiente** y **borrar lo pintado** (este pide confirmación).
+- **Menú:** arriba hay dos botones: el naranja (escoba) **borra lo pintado de todos los dibujos** (pregunta antes) y el rojo (apagado) **cierra la app** al instante y vuelve a la pantalla del celular.
 - El menú principal muestra los dibujos con lo que ya se pintó, de dos en dos. Se desliza hacia arriba y abajo con el dedo (la barra de la derecha muestra en qué parte de la lista va). Se toca un dibujo y se abre.
-- Viene con **34 dibujos** (animales, frutas, vehículos, cosas del cielo y del jardín...).
+- Viene con **34 dibujos** (animales, frutas, vehículos, cosas del cielo y del jardín...) y **los que tú agregues en la carpeta `mis_dibujos`** (ver "Agregar dibujos nuevos").
+- **Ícono propio:** un arcoíris pintado con un pincel (carpeta `icono/`, se crea con `tools/generar_icono.py`).
 - **Zona de papás**: mantener presionado el engranaje gris (arriba a la derecha del menú) para agregar dibujos nuevos.
 
 ### Si la voz no suena
@@ -39,6 +42,9 @@ Todo está en `lib/config.dart`:
 | Quitar o cambiar la presentación | `mostrarPresentacion`, `presentacionLinea1/2` |
 | Voz más aguda o más grave | `vozTono` (1.0 normal, hasta 2.0) |
 | Voz más lenta o más rápida | `vozVelocidad` |
+| Cuánta pintura tiene cada tarrito | `toquesPorTarrito` |
+| Cuánto tarda en rellenarse | `toquesParaRellenar` |
+| Lo que dice la voz cuando se acaba un color | `vozSeAcabo`, `vozRellenando`, `vozEligeOtro` |
 | Apagar la voz | `vozActiva = false` |
 | Cambiar colores o sus nombres | la lista `paleta` |
 
@@ -96,6 +102,14 @@ En Android puedes **fijar la pantalla** (en Ajustes busca "Fijar app" o "Fijar p
 
 ## Agregar dibujos nuevos
 
+### Forma 0 — la más fácil: tus propias imágenes (carpeta `mis_dibujos`)
+
+1. Copia imágenes de **líneas negras sobre fondo blanco** (láminas para colorear, PNG o JPG) en la carpeta `mis_dibujos/`.
+2. `git add .`, `git commit -m "Nuevos dibujos"`, `git push`.
+3. Al compilar, GitHub convierte cada imagen en un dibujo para pintar con toques (cada zona blanca cerrada por líneas se vuelve una zona) y lo pone **al principio del menú**. El nombre del archivo es el nombre del dibujo.
+
+Consejos: figuras cerradas (sin huecos en las líneas), líneas gruesas y pocas zonas pequeñas. Las zonas muy chiquitas no se pintan. Para probar en tu computadora antes de subir: `pip install opencv-python-headless numpy` y `python3 tools/convertir_imagenes.py` (crea los archivos `foto_*.json` y `foto_*.png` en `assets/drawings/`; no hace falta subirlos, GitHub los vuelve a crear).
+
 Hay dos formas. Cada dibujo es un archivo de texto (JSON).
 
 ### Forma 1 — desde el celular (uno por uno, sin recompilar)
@@ -148,6 +162,9 @@ El nombre dentro de `indice.json` debe ser exactamente el del archivo, y cada di
 | Cómo se pinta con el dedo | `lib/widgets/lienzo.dart` |
 | Guardado de lo pintado | `lib/models/pintura.dart` |
 | Voz de los colores | `lib/servicios/voz.dart` |
+| Tarritos de pintura | `lib/models/tarritos.dart` y `lib/widgets/paleta.dart` |
+| Convertir imágenes en dibujos | `tools/convertir_imagenes.py` (carpeta `mis_dibujos/`) |
+| Ícono de la app | `tools/generar_icono.py` (carpeta `icono/`) |
 | Sonidos | `lib/servicios/sonidos.dart` y `assets/sonidos/` (se crean con `tools/generar_sonidos.py`) |
 | Presentación al abrir | `lib/pantallas/pantalla_presentacion.dart` |
 | Pantalla de pintar (botones, posición de la paleta) | `lib/pantallas/pantalla_pintar.dart` |

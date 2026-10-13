@@ -87,6 +87,22 @@ class Ajustes {
   /// voz termine antes. La paleta también espera a que la voz termine.
   static const int pausaMinimaColor = 700;
 
+  // -------------------------------------------------------------- tarritos
+
+  /// Cada color es un tarrito de pintura: alcanza para esta cantidad de
+  /// toques (arrastrar el dedo también gasta pintura).
+  static const int toquesPorTarrito = 8;
+
+  /// Cuando un tarrito se vacía, se rellena solo mientras se pinta con OTROS
+  /// colores: hacen falta esta cantidad de toques con otros colores.
+  /// Mientras se rellena, ese color no se puede usar.
+  static const int toquesParaRellenar = 5;
+
+  /// Lo que dice la voz. {color} se cambia por el nombre del color.
+  static const String vozSeAcabo = '¡Se acabó el color {color}! Elige otro color.';
+  static const String vozRellenando = '¡El {color} se está llenando! Espera un ratito.';
+  static const String vozEligeOtro = '¡Elige otro color!';
+
   // ---------------------------------------------------------------- colores
 
   /// Colores del menú de pintura con el nombre que dice la voz.

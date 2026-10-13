@@ -21,7 +21,20 @@ class Repositorio {
     final textos = await Future.wait(
       nombres.map((nombre) => rootBundle.loadString('assets/drawings/$nombre')),
     );
-    return textos.map((texto) => Dibujo.desdeTexto(texto)).toList();
+    final dibujos = textos.map((texto) => Dibujo.desdeTexto(texto)).toList();
+    // Los dibujos hechos desde una imagen traen sus líneas en un .png.
+    await Future.wait(
+      dibujos.where((d) => d.archivoLineas != null).map((d) async {
+        try {
+          final datos = await rootBundle.load('assets/drawings/${d.archivoLineas}');
+          d.lineasPng =
+              datos.buffer.asUint8List(datos.offsetInBytes, datos.lengthInBytes);
+        } catch (_) {
+          // Sin la imagen, las líneas se dibujan a partir de las zonas.
+        }
+      }),
+    );
+    return dibujos;
   }
 
   static Future<List<Dibujo>> cargarImportados() async {

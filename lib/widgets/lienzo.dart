@@ -33,7 +33,8 @@ class MiniaturaPainter extends CustomPainter {
     canvas.drawRect(todo, Paint()..color = Colors.white);
     final pintado = Pintura.miniatura(dibujo.id);
     if (pintado != null) _dibujarImagen(canvas, pintado, todo);
-    _dibujarImagen(canvas, Pintura.lineasMiniatura(dibujo), todo);
+    final lineas = Pintura.lineasMiniatura(dibujo);
+    if (lineas != null) _dibujarImagen(canvas, lineas, todo);
   }
 
   @override
@@ -99,10 +100,19 @@ class _PintorLienzo extends CustomPainter {
 ///  - Cuando una mancha termina, se "hornea" dentro de la imagen del dibujo;
 ///    por eso pintar cuesta siempre lo mismo, aunque se pinte muchísimo.
 class Lienzo extends StatefulWidget {
-  const Lienzo({super.key, required this.dibujo, required this.color});
+  const Lienzo({
+    super.key,
+    required this.dibujo,
+    required this.color,
+    this.alGastarPintura,
+  });
 
   final Dibujo dibujo;
   final Color color;
+
+  /// Se llama al empezar cada mancha (y cada tanto al arrastrar). Si
+  /// devuelve false (el tarrito está vacío), no se pinta.
+  final bool Function()? alGastarPintura;
 
   @override
   State<Lienzo> createState() => _EstadoLienzo();
@@ -123,6 +133,7 @@ class _EstadoLienzo extends State<Lienzo>
   int? _puntero; // el dedo que está pintando (se ignoran los demás)
   Trazo? _trazo; // la mancha que se está pintando ahora
   double _recorrido = 0; // distancia arrastrada desde el último "plop"
+  bool _detenido = false; // se acabó la pintura a mitad de un arrastre
 
   @override
   void initState() {
@@ -134,7 +145,8 @@ class _EstadoLienzo extends State<Lienzo>
     // Se calcula de una vez el tamaño de cada zona, justo después de mostrar
     // el dibujo, para que el primer toque no tenga que esperar.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
+      // (Los dibujos hechos desde imagen lo calculan al tocar cada zona.)
+      if (!mounted || !widget.dibujo.capas) return;
       for (var i = 0; i < widget.dibujo.regiones.length; i++) {
         widget.dibujo.areaVisible(i);
       }
@@ -268,51 +280,91 @@ class _EstadoLienzo extends State<Lienzo>
   Offset _aDibujo(Offset local, double lado) =>
       local * (widget.dibujo.lado / lado);
 
+  bool _gastar() => widget.alGastarPintura?.call() ?? true;
+
   void _alBajar(PointerDownEvent e, double lado) {
     if (_puntero != null || !_listo) return;
     _puntero = e.pointer;
     _trazo = null;
+    _detenido = false;
     final p = _aDibujo(e.localPosition, lado);
     final i = _regionEn(p);
     if (i == null) return;
+    if (!_gastar()) {
+      _detenido = true;
+      return;
+    }
     setState(() => _empezar(p, i));
   }
 
   void _alMover(PointerMoveEvent e, double lado) {
-    if (e.pointer != _puntero) return;
+    if (e.pointer != _puntero || _detenido) return;
     final p = _aDibujo(e.localPosition, lado);
     final trazo = _trazo;
     if (trazo == null) {
       // Empezó fuera del dibujo: se pega a la primera zona que toque.
       final i = _regionEn(p);
       if (i == null) return;
+      if (!_gastar()) {
+        _detenido = true;
+        return;
+      }
       setState(() => _empezar(p, i));
       return;
     }
-    final anterior = trazo.puntos.last;
-    if (trazo.sumar(p)) {
-      _recorrido += (p - anterior).distance;
-      if (_recorrido >= Ajustes.distanciaEntrePlops) {
-        _recorrido = 0;
-        Sonidos.plop();
+    final paso = (p - trazo.puntos.last).distance;
+    if (paso < 6) return; // movimiento muy chiquito: se ignora
+    if (_recorrido + paso >= Ajustes.distanciaEntrePlops) {
+      // Arrastrar también gasta pintura.
+      if (!_gastar()) {
+        _detenido = true;
+        _trazo = null;
+        return;
       }
-      setState(() {});
     }
+    trazo.sumar(p);
+    _recorrido += paso;
+    if (_recorrido >= Ajustes.distanciaEntrePlops) {
+      _recorrido = 0;
+      Sonidos.plop();
+    }
+    setState(() {});
   }
 
   void _alSoltar(PointerEvent e) {
     if (e.pointer != _puntero) return;
     _puntero = null;
     _trazo = null;
+    _detenido = false;
     // Para que la mancha se hornee aunque ya haya terminado de derramarse.
     if (_activos.isNotEmpty && !_ticker.isActive) _ticker.start();
   }
 
   void _asegurarLineas(int px) {
-    if (_lineas != null && _pxLineas == px) return;
+    if (_pxLineas == px) return;
+    _pxLineas = px;
+    if (widget.dibujo.lineasPng != null) {
+      _leerLineasDeImagen(px); // dibujo hecho desde una imagen
+      return;
+    }
     _lineas?.dispose();
     _lineas = Dibujante.lineas(widget.dibujo, px);
-    _pxLineas = px;
+  }
+
+  Future<void> _leerLineasDeImagen(int px) async {
+    final imagen = await Pintura.lineasDeImagen(widget.dibujo, px);
+    if (imagen == null) {
+      // No se pudo leer: se vuelven a hacer las líneas desde las zonas.
+      if (mounted) setState(() => _pxLineas = 0);
+      return;
+    }
+    if (!mounted || _pxLineas != px) {
+      imagen.dispose();
+      return;
+    }
+    final vieja = _lineas;
+    setState(() => _lineas = imagen);
+    vieja?.dispose();
   }
 
   @override

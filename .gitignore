@@ -21,3 +21,6 @@ android/key.properties
 *.keystore
 # Excepción: la firma fija del APK (es una firma de pruebas, no un secreto)
 !signing/debug.keystore
+
+# Los crea tools/convertir_imagenes.py al compilar (desde mis_dibujos/)
+assets/drawings/foto_*
