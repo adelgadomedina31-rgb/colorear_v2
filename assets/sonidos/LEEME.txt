@@ -1,0 +1,48 @@
+LOS SONIDOS DE ARVI
+===================
+
+Cada grupo de sonidos está en su carpeta. Para cambiar un sonido, pon otro
+archivo con EXACTAMENTE el mismo nombre en la misma carpeta (reemplaza al
+que está). Si cambias el formato (por ejemplo .mp3 en vez de .wav), cambia
+también el nombre en el archivo de ajustes que se indica.
+
+comunes/  (los usan todos los juegos)
+   felicidades.wav ... la fiesta de las celebraciones (campanitas y aplausos)
+   acierto.wav ....... campanitas cortas cuando acierta
+   boing.wav ......... un "boing" suave cuando toca el que no era
+
+pintar/
+   gota1.wav ... gota5.wav ..... la gota de pintura al tocar el dibujo
+   trazo1.wav ... trazo4.wav ... el pincel al arrastrar el dedo
+
+colores/
+   reventar.wav ...... el globo que revienta
+
+animales/
+   (solo su LEEME) ... aquí van los sonidos de verdad de los animales,
+                       opcionales. Ver animales/LEEME.txt
+
+burbujas/
+   pop1.wav ... pop4.wav ... la burbuja que revienta ("¡blup!")
+   super_toque.wav ......... cada toque a la súper burbuja o a la mega
+   super_pop.wav ........... la súper, la mega o la arcoíris que revientan
+
+contar/
+   nota1.wav ... nota10.wav ... la notita al contar cada cosa (va subiendo)
+
+Dónde se dice qué sonido usar:
+   comunes ........ lib/comun/sonidos.dart
+   pintar ......... lib/juegos/pintar/partes/sonidos_pintar.dart
+   colores ........ lib/juegos/colores/colores_ajustes.dart
+   animales ....... lib/juegos/animales/animales_ajustes.dart
+   burbujas ....... lib/juegos/burbujas/burbujas_ajustes.dart
+   contar ......... lib/juegos/contar/contar_ajustes.dart
+
+El volumen de todos está en lib/app/ajustes_app.dart (y el de pintar en
+lib/juegos/pintar/pintar_ajustes.dart).
+
+Los sonidos de fábrica se crean con tools/generar_sonidos.py (ojo: ese
+programa vuelve a crear los de fábrica y reemplaza los tuyos).
+
+Si agregas una carpeta nueva de sonidos, agrégala también en pubspec.yaml
+(en la lista "assets:").
